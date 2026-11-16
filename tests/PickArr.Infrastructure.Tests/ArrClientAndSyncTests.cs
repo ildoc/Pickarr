@@ -218,18 +218,32 @@ public sealed class ArrClientAndSyncTests : IAsyncLifetime
         await db.SaveChangesAsync();
         db.ArrAuditLogs.Add(new ArrAuditLog
         {
-            ProfileId = owner.Id, TitleId = 42, ArrId = 10, Kind = ArrKinds.Radarr,
-            At = now, Action = ArrAuditActions.Add, Outcome = ArrAuditOutcomes.Success, Options = "{}",
+            ProfileId = owner.Id,
+            TitleId = 42,
+            ArrId = 10,
+            Kind = ArrKinds.Radarr,
+            At = now,
+            Action = ArrAuditActions.Add,
+            Outcome = ArrAuditOutcomes.Success,
+            Options = "{}",
         });
         db.ArrLibraryItems.Add(new ArrLibraryItem
         {
-            TitleId = 42, ArrId = 10, Kind = ArrKinds.Radarr, ArrTitle = "Cached",
-            State = ArrStates.Downloaded, SyncedAt = now,
+            TitleId = 42,
+            ArrId = 10,
+            Kind = ArrKinds.Radarr,
+            ArrTitle = "Cached",
+            State = ArrStates.Downloaded,
+            SyncedAt = now,
         });
         db.Titles.Add(new Title
         {
-            Id = 42, MediaType = MediaTypes.Movie, Category = TitleCategories.Movie,
-            MetadataStatus = MetadataStatuses.Ready, CreatedAt = now, UpdatedAt = now,
+            Id = 42,
+            MediaType = MediaTypes.Movie,
+            Category = TitleCategories.Movie,
+            MetadataStatus = MetadataStatuses.Ready,
+            CreatedAt = now,
+            UpdatedAt = now,
         });
         await db.SaveChangesAsync();
         MapJson("/api/v3/movie", "[]");

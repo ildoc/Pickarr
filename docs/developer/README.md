@@ -53,6 +53,7 @@ Local data path is `.data` via `src/Pickarr.Api/Properties/launchSettings.json` 
 
 ```bash
 dotnet test
+dotnet format Pickarr.slnx --verify-no-changes --no-restore
 cd src/Pickarr.WebApp && npm test -- --run && npm run typecheck && npm run lint && npm run build
 ```
 

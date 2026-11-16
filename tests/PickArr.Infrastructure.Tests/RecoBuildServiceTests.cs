@@ -493,8 +493,13 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
         db.ArrAuditLogs.AddRange(new[] { ArrAuditActions.Add, ArrAuditActions.Download, ArrAuditActions.Delete }
             .Select(action => new ArrAuditLog
             {
-                ProfileId = profileId, TitleId = 101, Kind = ArrKinds.Radarr, At = now,
-                Action = action, Outcome = ArrAuditOutcomes.Success, Options = "{}",
+                ProfileId = profileId,
+                TitleId = 101,
+                Kind = ArrKinds.Radarr,
+                At = now,
+                Action = action,
+                Outcome = ArrAuditOutcomes.Success,
+                Options = "{}",
             }));
         await db.SaveChangesAsync();
 

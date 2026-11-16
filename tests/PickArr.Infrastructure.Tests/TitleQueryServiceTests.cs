@@ -499,18 +499,26 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
         var now = DateTime.UtcNow;
         var profiles = Enumerable.Range(1, 10).Select(i => new Profile
         {
-            Name = $"Profile {i}", Color = Profile.DefaultColor, IsAdmin = i == 1, CreatedAt = now,
+            Name = $"Profile {i}",
+            Color = Profile.DefaultColor,
+            IsAdmin = i == 1,
+            CreatedAt = now,
         }).ToList();
         var sources = new[] { "US", "GB", "DE", "FR" }.Select(country => new CatalogSource
         {
-            ProviderId = source.ProviderId, CountryCode = country, MetadataLanguage = "en-US", IsEnabled = true,
+            ProviderId = source.ProviderId,
+            CountryCode = country,
+            MetadataLanguage = "en-US",
+            IsEnabled = true,
         }).Prepend(source).ToList();
         var genres = Enumerable.Range(1, 6).Select(id => new Genre
         {
             Id = id,
             Localizations = new[] { "it-IT", "en-US" }.Select(language => new GenreLocalization
             {
-                GenreId = id, Language = language, Name = $"Genre {id}",
+                GenreId = id,
+                Language = language,
+                Name = $"Genre {id}",
             }).ToList(),
         }).ToList();
         db.Profiles.AddRange(profiles);
@@ -518,15 +526,24 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
         db.Genres.AddRange(genres);
         var titles = Enumerable.Range(1, 10000).Select(i => new Title
         {
-            OriginalTitle = $"Title {i}", OriginalTitleNormalized = $"title {i}",
-            MediaType = MediaTypes.Movie, Category = TitleCategories.Movie, ReleaseYear = 2020,
-            MetadataStatus = MetadataStatuses.Ready, CreatedAt = now, UpdatedAt = now,
+            OriginalTitle = $"Title {i}",
+            OriginalTitleNormalized = $"title {i}",
+            MediaType = MediaTypes.Movie,
+            Category = TitleCategories.Movie,
+            ReleaseYear = 2020,
+            MetadataStatus = MetadataStatuses.Ready,
+            CreatedAt = now,
+            UpdatedAt = now,
         }).ToList();
         db.Titles.AddRange(titles);
         await db.SaveChangesAsync();
         db.Availabilities.AddRange(titles.Select(t => new Availability
         {
-            TitleId = t.Id, CatalogSourceId = source.Id, FirstSeenAt = now, LastSeenAt = now, AddedAt = now,
+            TitleId = t.Id,
+            CatalogSourceId = source.Id,
+            FirstSeenAt = now,
+            LastSeenAt = now,
+            AddedAt = now,
         }));
         foreach (var title in titles.Take(48))
         {
@@ -534,8 +551,11 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
             {
                 title.Localizations.Add(new TitleLocalization
                 {
-                    Language = language, Name = title.OriginalTitle!, NameNormalized = title.OriginalTitleNormalized!,
-                    Overview = new string('x', 1000), FetchedAt = now,
+                    Language = language,
+                    Name = title.OriginalTitle!,
+                    NameNormalized = title.OriginalTitleNormalized!,
+                    Overview = new string('x', 1000),
+                    FetchedAt = now,
                 });
             }
             foreach (var genre in genres) title.TitleGenres.Add(new TitleGenre { GenreId = genre.Id });
@@ -549,14 +569,22 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
             {
                 title.Availabilities.Add(new Availability
                 {
-                    CatalogSourceId = extraSource.Id, FirstSeenAt = now, LastSeenAt = now, AddedAt = now,
+                    CatalogSourceId = extraSource.Id,
+                    FirstSeenAt = now,
+                    LastSeenAt = now,
+                    AddedAt = now,
                 });
             }
         }
         db.RecoStates.Add(new RecoState { ProfileId = profiles[9].Id, CurrentVersion = 1, Stage = RecoLearning.StageCold });
         db.Recommendations.AddRange(titles.Select((title, index) => new Recommendation
         {
-            ProfileId = profiles[9].Id, Version = 1, TitleId = title.Id, Rank = index + 1, Score = 1, Prior = 1,
+            ProfileId = profiles[9].Id,
+            Version = 1,
+            TitleId = title.Id,
+            Rank = index + 1,
+            Score = 1,
+            Prior = 1,
         }));
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
@@ -574,7 +602,9 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
         await reco.QueryAsync(recommendationRequest);
         var timings = new Dictionary<string, List<double>>
         {
-            ["catalog/search"] = [], ["detail"] = [], ["recommendations"] = [],
+            ["catalog/search"] = [],
+            ["detail"] = [],
+            ["recommendations"] = [],
         };
         for (var sample = 0; sample < 10; sample++)
         {

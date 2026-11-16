@@ -164,7 +164,11 @@ public sealed class ArrAddDeleteTests : IAsyncLifetime
             .RespondWith(Response.Create().WithStatusCode(201).WithHeader("Content-Type", "application/json")
                 .WithBody(JsonSerializer.Serialize(new
                 {
-                    id = 77, title = "Example Series", tvdbId = 121361, tmdbId = 1396, monitored = true,
+                    id = 77,
+                    title = "Example Series",
+                    tvdbId = 121361,
+                    tmdbId = 1396,
+                    monitored = true,
                     statistics,
                     seasons = new[] { new { seasonNumber = 1, monitored = true, statistics } },
                 })));
