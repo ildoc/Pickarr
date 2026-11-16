@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { I18nextProvider } from 'react-i18next'
@@ -103,5 +103,43 @@ describe('AddToArrDialog', () => {
     await user.click(screen.getByRole('button', { name: /^Add$/i }))
 
     expect(await screen.findByText('ARR_ID_UNMAPPED')).toBeTruthy()
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.getByRole('button', { name: /^Add$/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeEnabled()
+  })
+
+  it.each(['sonarr', 'radarr'] as const)('shows pending feedback until %s finishes adding', async (kind) => {
+    const user = userEvent.setup()
+    let finishAdd!: (arr: TitleDetail['arr']) => void
+    vi.mocked(postTitleArr).mockReturnValue(new Promise((resolve) => {
+      finishAdd = resolve
+    }))
+    const onClose = vi.fn()
+    const onAdded = vi.fn()
+    wrap(
+      <AddToArrDialog
+        title={{ ...title, arr: { ...title.arr, kind } }}
+        open
+        onClose={onClose}
+        onAdded={onAdded}
+      />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: /^Add$/i }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      `Adding to ${kind === 'sonarr' ? 'Sonarr' : 'Radarr'}...`,
+    )
+    expect(screen.getByRole('button', { name: 'Adding...' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeDisabled()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(onAdded).not.toHaveBeenCalled()
+    expect(postTitleArr).toHaveBeenCalledTimes(1)
+
+    await act(async () => finishAdd(title.arr))
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce())
+    expect(onAdded).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

@@ -233,6 +233,7 @@ export type RecoEvalReport = {
 export type TitleQueryParams = {
   q?: string
   view?: string
+  arrState?: string
   type?: string
   includeRemoved?: boolean
   sort?: string

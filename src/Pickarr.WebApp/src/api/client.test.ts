@@ -41,6 +41,21 @@ afterEach(() => {
 })
 
 describe('api client', () => {
+  it('sends the downloaded library filter to the catalog API', async () => {
+    memoryStorage.setItem(profileStorageKey, '4')
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      page: 1, pageSize: 48, total: 0, items: [],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchTitles(2, { view: 'all', arrState: 'downloaded', q: 'Example' })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/catalog/sources/2/titles?q=Example&view=all&arrState=downloaded&pageSize=48',
+      expect.any(Object),
+    )
+  })
+
   it('throws ApiError with status when GET is not ok', async () => {
     vi.stubGlobal(
       'fetch',

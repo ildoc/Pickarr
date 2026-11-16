@@ -7,7 +7,9 @@ Pickarr syncs **catalog sources**: each source is a streaming **provider + count
 On `/catalog`:
 
 - Choose one provider, then one country.
-- Quick filters: **All**, **New**, **Leaving**, **Recently removed**.
+- Quick filters: **All**, **New**, **Leaving**, **Recently removed**, **In library**.
+- **In library** shows only titles whose cached Sonarr/Radarr status is **Downloaded**, within the selected provider and country. Missing, downloading, and partial titles are excluded.
+- The search field has a **Clear search** button when text is entered; clearing it keeps the other filters.
 - Filters: type, genre, year, library state, sort, include removed.
 - Infinite poster grid with library badges, favorite heart, and rating controls.
 - With recommendations enabled, the **For you** row under **All** (without search) follows the selected provider, country, type, and genre.
@@ -76,6 +78,7 @@ Votes are highlighted immediately. While a vote is saving, that title's rating c
 
 - Optional. Configure later or never; without Arr, Pickarr remains a catalog browser and recommendation engine.
 - When configured, add series to Sonarr and movies to Radarr from the title dialog. The library section is omitted for a media type whose instance is not configured.
+- While an add request is running, the dialog shows an adding indicator and disables Add and Close until the request succeeds or fails. Errors leave the dialog open for retry.
 - See shared library status on cards and in detail when the matching Arr is configured.
 - For a series already in Sonarr, use the season table in its detail dialog to enable or stop monitoring individual seasons.
 - Delete with confirmation; destructive delete options default off.

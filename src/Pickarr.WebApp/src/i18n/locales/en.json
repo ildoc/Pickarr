@@ -163,6 +163,7 @@
     }
   },
   "catalog": {
+    "clearSearch": "Clear search",
     "searchPlaceholder": "Search titles…",
     "sourceLabel": "Source",
     "provider": "Provider",
@@ -192,6 +193,7 @@
     "stale": "Catalog data may be stale"
   },
   "views": {
+    "library": "In library",
     "all": "All",
     "new": "New",
     "leaving": "Leaving",
@@ -231,6 +233,8 @@
     "notConfigured": "Arr instance not configured — open Settings.",
     "unreachable": "Arr instance is configured but not reachable.",
     "confirmAdd": "Add",
+    "adding": "Adding...",
+    "addingTo": "Adding to {{kind}}...",
     "confirmDelete": "Remove",
     "confirmDeleteFiles": "Delete permanently",
     "addFailed": "Could not add to Arr.",

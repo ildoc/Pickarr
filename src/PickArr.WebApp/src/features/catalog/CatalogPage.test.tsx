@@ -153,6 +153,57 @@ describe('CatalogPage', () => {
     )
   })
 
+  it('filters downloaded titles server-side and clears the library filter on All', async () => {
+    const user = userEvent.setup()
+    renderAt('/catalog?source=1&q=Example&type=movie')
+
+    await waitFor(() => expect(fetchTitles).toHaveBeenCalled())
+    await user.click(screen.getByRole('button', { name: 'In library' }))
+
+    await waitFor(() =>
+      expect(fetchTitles).toHaveBeenLastCalledWith(
+        1,
+        expect.objectContaining({
+          view: 'all', arrState: 'downloaded', q: 'Example', type: 'movie', page: 1,
+        }),
+      ),
+    )
+    expect(screen.getByRole('button', { name: 'In library' })).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'All' }))
+
+    await waitFor(() =>
+      expect(fetchTitles).toHaveBeenLastCalledWith(
+        1,
+        expect.objectContaining({ view: 'all', arrState: undefined, q: 'Example', type: 'movie' }),
+      ),
+    )
+  })
+
+  it('restores the library filter from the URL and clears only the text search', async () => {
+    const user = userEvent.setup()
+    renderAt('/catalog?source=1&view=library&q=Example&type=movie')
+
+    await waitFor(() =>
+      expect(fetchTitles).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ arrState: 'downloaded', q: 'Example', type: 'movie' }),
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: 'Clear search' }))
+
+    expect(screen.getByRole('searchbox')).toHaveValue('')
+    expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull()
+    await waitFor(() =>
+      expect(fetchTitles).toHaveBeenLastCalledWith(
+        1,
+        expect.objectContaining({
+          arrState: 'downloaded', q: undefined, type: 'movie', sort: 'added', page: 1,
+        }),
+      ),
+    )
+  })
+
   it('updates recommendations when type and genre filters change or are cleared', async () => {
     const user = userEvent.setup()
     vi.mocked(fetchGenres).mockResolvedValue([{ id: 28, name: 'Action', count: 1 }])

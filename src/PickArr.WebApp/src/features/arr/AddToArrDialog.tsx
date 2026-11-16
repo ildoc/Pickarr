@@ -66,6 +66,7 @@ export function AddToArrDialog({ title, open, onClose, onAdded }: Props) {
   )
 
   const add = useMutation({
+    onMutate: () => setError(null),
     mutationFn: async () => {
       if (qualityProfileId === '') throw new Error('profile required')
       const body: ArrAddBody =
@@ -127,10 +128,11 @@ export function AddToArrDialog({ title, open, onClose, onAdded }: Props) {
 
       {options.data?.configured && options.data.reachable && (
         <form
+          aria-busy={add.isPending}
           className="mt-4 space-y-3"
           onSubmit={(e) => {
             e.preventDefault()
-            add.mutate()
+            if (canSubmit && !add.isPending) add.mutate()
           }}
         >
           <label className="block text-sm">
@@ -326,12 +328,22 @@ export function AddToArrDialog({ title, open, onClose, onAdded }: Props) {
           </label>
 
           {error && <p className="text-sm text-red-300">{error}</p>}
+          {add.isPending && (
+            <p role="status" className="flex items-center gap-2 text-sm text-[var(--muted)]">
+              <span
+                aria-hidden="true"
+                className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+              />
+              {t('arr.addingTo', { kind: kind === 'sonarr' ? 'Sonarr' : 'Radarr' })}
+            </p>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md px-3 py-1.5 text-sm text-[var(--muted)] hover:bg-white/5"
+              disabled={add.isPending}
+              className="rounded-md px-3 py-1.5 text-sm text-[var(--muted)] hover:bg-white/5 disabled:opacity-50"
             >
               {t('title.close')}
             </button>
@@ -340,7 +352,7 @@ export function AddToArrDialog({ title, open, onClose, onAdded }: Props) {
               disabled={!canSubmit || add.isPending}
               className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
             >
-              {t('arr.confirmAdd')}
+              {t(add.isPending ? 'arr.adding' : 'arr.confirmAdd')}
             </button>
           </div>
         </form>

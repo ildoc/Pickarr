@@ -156,13 +156,27 @@ export function FilterBar({
           </select>
         </label>
         {!hideSearch && (
-          <input
-            type="search"
-            value={q}
-            onChange={(e) => onQChange(e.target.value)}
-            placeholder={t('catalog.searchPlaceholder')}
-            className="min-w-0 flex-[1_1_280px] rounded-md border border-white/10 bg-[var(--surface-2)] px-3 py-2 text-[var(--text)] placeholder:text-[var(--muted)]"
-          />
+          <div className="relative min-w-0 flex-[1_1_280px]">
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => onQChange(e.target.value)}
+              placeholder={t('catalog.searchPlaceholder')}
+              className="w-full min-w-0 rounded-md border border-white/10 bg-[var(--surface-2)] py-2 pl-3 pr-10 text-[var(--text)] placeholder:text-[var(--muted)] [&::-webkit-search-cancel-button]:appearance-none"
+            />
+            {q && (
+              <button
+                type="button"
+                aria-label={t('catalog.clearSearch')}
+                className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-md text-[var(--muted)] hover:bg-white/5 hover:text-[var(--text)]"
+                onClick={() => onQChange('')}
+              >
+                <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="m4 4 8 8m0-8-8 8" />
+                </svg>
+              </button>
+            )}
+          </div>
         )}
         {!hideSort && (
           <label className="flex max-w-full shrink-0 items-center gap-2 text-sm text-[var(--muted)]">

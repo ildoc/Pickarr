@@ -104,7 +104,8 @@ export function CatalogPage() {
     queryFn: ({ pageParam }) =>
       fetchTitles(sourceId!, {
         q: debouncedQ || undefined,
-        view,
+        view: view === 'library' ? 'all' : view,
+        arrState: view === 'library' ? 'downloaded' : undefined,
         type: type || undefined,
         genre: genre || undefined,
         includeRemoved: view === 'removed' || undefined,

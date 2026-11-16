@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
-const VIEWS = ['all', 'new', 'leaving', 'removed'] as const
+const VIEWS = ['all', 'new', 'leaving', 'removed', 'library'] as const
 
 export function QuickFilters({
   value,
@@ -19,6 +19,7 @@ export function QuickFilters({
           <button
             key={view}
             type="button"
+            aria-pressed={active}
             onClick={() => onChange(view)}
             className={`rounded-full px-3 py-1 text-sm transition ${
               active

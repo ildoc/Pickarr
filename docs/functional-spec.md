@@ -177,7 +177,7 @@ Priority (MoSCoW): **M** = Must (MVP), **S** = Should, **C** = Could, **W** = Wo
 |---|---|---|
 | FR-UI-01 | ** Desktop only ** interface (minimum supported width 1280px) with ** dark theme **. | M |
 | FR-UI-02 | A selector in the header allows you to choose the catalog source (service + country). The choice is remembered between one session and another. | M |
-| FR-UI-03 | Home is a **grid view** of the catalog of the selected source, with search bar and quick filters: *All*, *New*, *Expiring*, *Recently removed*. With recommendations active, a dedicated row of recommendations for that source (max 25) appears under *All* (without search) and follows the selected type and genre filters. *My list* and *For you* (union of sources) are dedicated routes (`/list`, `/for-you`). | M |
+| FR-UI-03 | Home is a **grid view** of the catalog of the selected source, with search bar and quick filters: *All*, *New*, *Expiring*, *Recently removed*, *In library*. *In library* shows only titles with cached Arr status *Downloaded* in the selected source, excluding missing, downloading, and partial titles. With recommendations active, a dedicated row of recommendations for that source (max 25) appears under *All* (without search) and follows the selected type and genre filters. *My list* and *For you* (union of sources) are dedicated routes (`/list`, `/for-you`). | M |
 | FR-UI-04 | Each card shows poster, title, year, type badge (movie/serie/stand-up), ** library status ** badge, favorite icon, and **vote** checks (* Like */ *Dislike*) when recommendations are enabled. | M |
 | FR-UI-05 | The grid uses infinite scrolling with page loading. It must remain fluid with catalogs of a few thousand titles. | M |
 | FR-UI-06 | Clicking on a card opens the * * detail card * * in a modal window, which can also be reached via a direct URL. | M |
@@ -188,7 +188,7 @@ Priority (MoSCoW): **M** = Must (MVP), **S** = Should, **C** = Could, **W** = Wo
 
 | ID | Requirement | PRI |
 |---|---|---|
-| FR-SRC-01 | Text search **server-side * * on the localized title and on the original one, insensitive to capitalization and accents, with debunking on the UI side. | M |
+| FR-SRC-01 | Text search **server-side** on the localized and original title, insensitive to capitalization and accents, with debouncing on the UI side. A clear button removes the search text without resetting other filters. | M |
 | FR-SRC-02 | Combinable filters: **type** (movie/serie/stand-up), **genre** (multi-selection), **year** (range), ** library status ** (not in library, missing, downloaded, downloaded, partial), ** favorites only **, **include removed**. | M |
 | FR-SRC-03 | Sorts: relevance (with search), date added to the service, year, grade, title A→Z. | M |
 | FR-SRC-04 | Minimum grade filter. | C |
@@ -229,7 +229,7 @@ Priority (MoSCoW): **M** = Must (MVP), **S** = Should, **C** = Could, **W** = Wo
 | FR-ADD-06 | If the matching Arr instance is not configured, Add/library actions are omitted from the title dialog (browse-only for that media type). If the instance is configured but unreachable or rejects credentials, the action is blocked with a clear message and a link to the settings. | M |
 | FR-ADD-07 | If the title is already present in the instance, the Add action is not offered: it shows the status. | M |
 | FR-ADD-08 | Se per il titolo manca l'id necessario (TVDB per le serie, TMDB per i film), l'azione è disabilitata con una spiegazione. | M |
-| FR-ADD-09 | Dopo l'aggiunta l'interfaccia mostra subito il nuovo stato e un messaggio di esito. Eventuali errori restituiti da Sonarr/Radarr sono mostrati in forma leggibile. | M |
+| FR-ADD-09 | While adding to Sonarr/Radarr, the dialog shows progress feedback and disables Add and Close. On success it closes and refreshes the library status; readable errors keep it open for retry. | M |
 | FR-ADD-10 | Il dialog ricorda le ultime opzioni scelte (tranne il profilo/root di default). | C |
 
 ### 4.8 Stato libreria (FR-ST)

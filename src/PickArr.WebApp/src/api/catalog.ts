@@ -17,6 +17,7 @@ export function fetchTitles(sourceId: number, params: TitleQueryParams) {
     `/api/v1/catalog/sources/${sourceId}/titles${buildQuery({
       q: params.q,
       view: params.view,
+      arrState: params.arrState,
       type: params.type,
       includeRemoved: params.includeRemoved,
       sort: params.sort,
