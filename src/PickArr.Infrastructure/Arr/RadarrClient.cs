@@ -153,6 +153,13 @@ public sealed class RadarrClient(
         return MapMovie(created);
     }
 
+    public Task<ArrItemSnapshot> SetSeasonMonitoringAsync(
+        int arrId,
+        int seasonNumber,
+        bool monitored,
+        CancellationToken cancellationToken = default) =>
+        throw new ArrClientException(422, "Season monitoring is only available for Sonarr series.");
+
     public async Task SearchAsync(int arrId, CancellationToken cancellationToken = default)
     {
         var (baseUrl, apiKey) = await RequireConfigAsync(cancellationToken);

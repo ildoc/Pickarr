@@ -22,7 +22,8 @@ public static class ArrMatcher
             if (!string.IsNullOrWhiteSpace(item.ImdbId))
             {
                 return titles.FirstOrDefault(t =>
-                    string.Equals(t.ImdbId, item.ImdbId, StringComparison.OrdinalIgnoreCase))?.Id;
+                    t.MediaType == MediaTypes.Movie
+                    && string.Equals(t.ImdbId, item.ImdbId, StringComparison.OrdinalIgnoreCase))?.Id;
             }
 
             return null;
@@ -50,7 +51,8 @@ public static class ArrMatcher
         if (!string.IsNullOrWhiteSpace(item.ImdbId))
         {
             return titles.FirstOrDefault(t =>
-                string.Equals(t.ImdbId, item.ImdbId, StringComparison.OrdinalIgnoreCase))?.Id;
+                t.MediaType == MediaTypes.Series
+                && string.Equals(t.ImdbId, item.ImdbId, StringComparison.OrdinalIgnoreCase))?.Id;
         }
 
         return null;

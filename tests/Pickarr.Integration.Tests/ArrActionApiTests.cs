@@ -39,6 +39,18 @@ public sealed class ArrActionApiTests
     }
 
     [Fact]
+    public async Task Season_monitoring_requires_a_monitored_value()
+    {
+        var titleId = await SeedSeriesAsync();
+
+        var response = await _client.PutAsJsonAsync(
+            $"/api/v1/titles/{titleId}/arr/seasons/2",
+            new { });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Add_without_config_returns_not_configured()
     {
         using (var scope = _factory.Services.CreateScope())

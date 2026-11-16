@@ -1,0 +1,17 @@
+@baseUrl = http://localhost:5000
+
+### Monitor a season
+PUT {{baseUrl}}/api/v1/titles/1/arr/seasons/3
+Content-Type: application/json
+
+{
+  "monitored": true
+}
+
+### Stop monitoring a season
+PUT {{baseUrl}}/api/v1/titles/1/arr/seasons/2
+Content-Type: application/json
+
+{
+  "monitored": false
+}

@@ -229,9 +229,15 @@ public sealed class TitleQueryService(
             .Include(t => t.Availabilities).ThenInclude(a => a.CatalogSource!).ThenInclude(s => s.Provider)
             .ToListAsync(cancellationToken);
         var byId = titles.ToDictionary(t => t.Id);
-        var arrByTitle = await db.ArrLibraryItems.AsNoTracking()
+        var arrItems = await db.ArrLibraryItems.AsNoTracking()
             .Where(a => a.TitleId != null && pageIds.Contains(a.TitleId.Value))
-            .ToDictionaryAsync(a => a.TitleId!.Value, cancellationToken);
+            .ToListAsync(cancellationToken);
+        var arrByTitle = arrItems
+            .GroupBy(a => a.TitleId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => group.FirstOrDefault(a =>
+                    a.Kind == (byId[group.Key].MediaType == MediaTypes.Series ? ArrKinds.Sonarr : ArrKinds.Radarr)));
         var items = pageIds
             .Where(id => byId.ContainsKey(id))
             .Select(id => MapListItem(
@@ -463,9 +469,12 @@ public sealed class TitleQueryService(
         var genres = MapGenres(title, preferredLang);
         var sonarr = await IsSonarrConfiguredAsync(cancellationToken);
         var radarr = await IsRadarrConfiguredAsync(cancellationToken);
+        var expectedArrKind = title.MediaType == MediaTypes.Series ? ArrKinds.Sonarr : ArrKinds.Radarr;
         var arrItem = await db.ArrLibraryItems.AsNoTracking()
             .Include(a => a.Seasons)
-            .FirstOrDefaultAsync(a => a.TitleId == title.Id, cancellationToken);
+            .FirstOrDefaultAsync(
+                a => a.TitleId == title.Id && a.Kind == expectedArrKind,
+                cancellationToken);
         var arr = BuildArrDetail(title, arrItem, sonarr, radarr);
         var personal = PersonalFlags(title, personalProfileId);
 

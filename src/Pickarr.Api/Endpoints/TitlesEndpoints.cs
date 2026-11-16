@@ -247,6 +247,37 @@ public static class TitlesEndpoints
             }
         });
 
+        endpoints.MapPut("/api/v1/titles/{id:int}/arr/seasons/{seasonNumber:int}", async (
+            int id,
+            int seasonNumber,
+            SetSeasonMonitoringRequest body,
+            HttpContext http,
+            IArrSeasonMonitoringService monitoring,
+            PickarrDbContext db,
+            CancellationToken ct) =>
+        {
+            if (seasonNumber < 0)
+            {
+                return Results.BadRequest(new { code = "INVALID_SEASON", detail = "Season number must be zero or greater." });
+            }
+
+            try
+            {
+                var profileId = await ProfileRequest.ReadAttributedIdAsync(http, db, ct);
+                var arr = await monitoring.SetSeasonMonitoringAsync(id, seasonNumber, body.Monitored, ct, profileId);
+                return Results.Ok(arr);
+            }
+            catch (ArrOperationException ex)
+            {
+                return ArrProblem(ex);
+            }
+        })
+            .WithSummary("Set Sonarr monitoring for a season")
+            .WithDescription("Enables or disables monitoring for one season of a series already in the Sonarr library.")
+            .Produces(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound);
+
         endpoints.MapPost("/api/v1/titles/{id:int}/arr/refresh", async (
             int id,
             IArrClientFactory factory,
@@ -333,3 +364,9 @@ public static class TitlesEndpoints
 }
 
 public sealed record SetRatingRequest(string? Value);
+
+/// <summary>Sets whether one season of a Sonarr series is monitored.</summary>
+public sealed record SetSeasonMonitoringRequest
+{
+    public required bool Monitored { get; init; }
+}

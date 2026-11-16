@@ -33,6 +33,46 @@ public sealed class TitleDetailApiTests
     }
 
     [Fact]
+    public async Task Series_detail_ignores_a_misassociated_Radarr_item()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<PickarrDbContext>();
+        var stamp = Random.Shared.Next(100_000, 999_999);
+        var title = new Title
+        {
+            MediaType = MediaTypes.Series,
+            Category = TitleCategories.Series,
+            OriginalTitle = $"Arr Kind Series {stamp}",
+            TmdbId = stamp,
+            TmdbType = "tv",
+            ImdbId = $"tt{stamp}",
+            MetadataStatus = MetadataStatuses.Ready,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        db.Titles.Add(title);
+        await db.SaveChangesAsync();
+        db.ArrLibraryItems.Add(new ArrLibraryItem
+        {
+            Kind = ArrKinds.Radarr,
+            ArrId = stamp,
+            TitleId = title.Id,
+            ArrTitle = title.OriginalTitle,
+            State = ArrStates.Missing,
+        });
+        await db.SaveChangesAsync();
+
+        var response = await _client.GetAsync($"/api/v1/titles/{title.Id}");
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var detail = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var arr = detail.GetProperty("arr");
+        arr.GetProperty("kind").GetString().ShouldBe("sonarr");
+        arr.GetProperty("arrId").ValueKind.ShouldBe(JsonValueKind.Null);
+        arr.GetProperty("state").GetString().ShouldBe("notInLibrary");
+        arr.GetProperty("canDelete").GetBoolean().ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task Seasons_are_newest_first_and_episodes_are_oldest_first()
     {
         var titleId = await SeedSeriesWithCachedSeasonsAsync();

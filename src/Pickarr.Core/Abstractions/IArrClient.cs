@@ -18,6 +18,11 @@ public interface IArrClient
     Task<IReadOnlyList<ArrQueueEntry>> GetQueueAsync(CancellationToken cancellationToken = default);
     Task<ArrItemSnapshot?> FindByExternalIdAsync(ArrExternalId id, CancellationToken cancellationToken = default);
     Task<ArrItemSnapshot> AddAsync(ArrAddRequest request, CancellationToken cancellationToken = default);
+    Task<ArrItemSnapshot> SetSeasonMonitoringAsync(
+        int arrId,
+        int seasonNumber,
+        bool monitored,
+        CancellationToken cancellationToken = default);
     Task SearchAsync(int arrId, CancellationToken cancellationToken = default);
     Task DeleteAsync(int arrId, bool deleteFiles, bool addImportExclusion, CancellationToken cancellationToken = default);
 }

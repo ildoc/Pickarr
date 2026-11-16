@@ -124,6 +124,57 @@ public sealed class ArrAddDeleteTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SonarrClient_SetSeasonMonitoringAsync_updates_season_and_series_monitoring()
+    {
+        const string series = """
+            {
+              "id": 55,
+              "title": "Example Series",
+              "monitored": true,
+              "seasons": [
+                { "seasonNumber": 1, "monitored": true, "statistics": {} },
+                { "seasonNumber": 2, "monitored": false, "statistics": {} }
+              ]
+            }
+            """;
+        const string updatedSeries = """
+            {
+              "id": 55,
+              "title": "Example Series",
+              "year": 2018,
+              "tvdbId": 121361,
+              "tmdbId": 1396,
+              "path": "/tv/Example Series",
+              "monitored": true,
+              "seasons": [
+                { "seasonNumber": 1, "monitored": true },
+                { "seasonNumber": 2, "monitored": true }
+              ]
+            }
+            """;
+        MapJson("/api/v3/series/55", series);
+        MapPutJson("/api/v3/series/55", updatedSeries);
+
+        var client = new SonarrClient(
+            new HttpClient { BaseAddress = new Uri(_server.Urls[0]) },
+            CreateSettings(sonarr: true),
+            NullLogger<SonarrClient>.Instance);
+
+        await client.SetSeasonMonitoringAsync(55, seasonNumber: 1, monitored: false);
+
+        var put = _server.LogEntries.Single(entry =>
+            string.Equals(entry.RequestMessage.Method, "PUT", StringComparison.OrdinalIgnoreCase));
+        var body = JsonNode.Parse(put.RequestMessage.Body!)!;
+        body["monitored"]!.GetValue<bool>().ShouldBeFalse();
+        body["seasons"]!.AsArray()
+            .Single(season => season!["seasonNumber"]!.GetValue<int>() == 1)!["monitored"]!
+            .GetValue<bool>().ShouldBeFalse();
+        body["seasons"]!.AsArray()
+            .Single(season => season!["seasonNumber"]!.GetValue<int>() == 2)!["monitored"]!
+            .GetValue<bool>().ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task ArrAddService_adds_series_and_writes_audit()
     {
         MapJson("/api/v3/series", "[]"); // find by tvdb
@@ -152,6 +203,78 @@ public sealed class ArrAddDeleteTests : IAsyncLifetime
         var audit = await db.ArrAuditLogs.SingleAsync();
         audit.Action.ShouldBe(ArrAuditActions.Add);
         audit.Outcome.ShouldBe(ArrAuditOutcomes.Success);
+    }
+
+    [Fact]
+    public async Task ArrSeasonMonitoringService_updates_Sonarr_and_refreshes_cached_season_state()
+    {
+        const string series = """
+            {
+              "id": 55,
+              "title": "Example Series",
+              "year": 2018,
+              "tvdbId": 121361,
+              "tmdbId": 1396,
+              "path": "/tv/Example Series",
+              "monitored": true,
+              "seasons": [
+                { "seasonNumber": 1, "monitored": true },
+                { "seasonNumber": 2, "monitored": false }
+              ]
+            }
+            """;
+        const string updatedSeries = """
+            {
+              "id": 55,
+              "title": "Example Series",
+              "year": 2018,
+              "tvdbId": 121361,
+              "tmdbId": 1396,
+              "path": "/tv/Example Series",
+              "monitored": true,
+              "seasons": [
+                { "seasonNumber": 1, "monitored": true },
+                { "seasonNumber": 2, "monitored": true }
+              ]
+            }
+            """;
+        MapJson("/api/v3/series/55", series);
+        MapPutJson("/api/v3/series/55", updatedSeries);
+
+        await using var db = await CreateDbAsync();
+        var title = await SeedSeriesAsync(db);
+        var item = new ArrLibraryItem
+        {
+            Kind = ArrKinds.Sonarr,
+            ArrId = 55,
+            TitleId = title.Id,
+            ArrTitle = "Example Series",
+            State = ArrStates.Missing,
+        };
+        item.Seasons.Add(new ArrSeasonState
+        {
+            SeasonNumber = 2,
+            Monitored = false,
+            State = ArrStates.Missing,
+        });
+        db.ArrLibraryItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var services = CreateServices(db, CreateSettings(sonarr: true));
+        var result = await services.Monitoring.SetSeasonMonitoringAsync(title.Id, 2, monitored: true);
+
+        result.Seasons!.Single(season => season.Number == 2).Monitored.ShouldBeTrue();
+        (await db.ArrSeasonStates.SingleAsync(season => season.SeasonNumber == 2)).Monitored.ShouldBeTrue();
+        var put = _server.LogEntries.Single(entry =>
+            string.Equals(entry.RequestMessage.Method, "PUT", StringComparison.OrdinalIgnoreCase));
+        JsonNode.Parse(put.RequestMessage.Body!)!["seasons"]!.AsArray()
+            .Single(season => season!["seasonNumber"]!.GetValue<int>() == 2)!["monitored"]!
+            .GetValue<bool>().ShouldBeTrue();
+        var audit = await db.ArrAuditLogs.SingleAsync();
+        audit.Action.ShouldBe(ArrAuditActions.Update);
+        audit.Outcome.ShouldBe(ArrAuditOutcomes.Success);
+        audit.Options.ShouldContain("\"seasonNumber\":2");
+        audit.Options.ShouldContain("\"monitored\":true");
     }
 
     [Fact]
@@ -277,10 +400,14 @@ public sealed class ArrAddDeleteTests : IAsyncLifetime
         var titles = new TitleQueryService(db, settings, new SystemClock());
         var add = new ArrAddService(db, factory, sync, titles, new SystemClock());
         var delete = new ArrDeleteService(db, factory, sync, titles, new SystemClock());
-        return new Services(add, delete);
+        var monitoring = new ArrSeasonMonitoringService(db, factory, sync, titles, new SystemClock());
+        return new Services(add, delete, monitoring);
     }
 
-    private sealed record Services(IArrAddService Add, IArrDeleteService Delete);
+    private sealed record Services(
+        IArrAddService Add,
+        IArrDeleteService Delete,
+        IArrSeasonMonitoringService Monitoring);
 
     private static async Task<Title> SeedSeriesAsync(PickarrDbContext db)
     {
@@ -342,6 +469,16 @@ public sealed class ArrAddDeleteTests : IAsyncLifetime
             .Given(Request.Create().WithPath(path).UsingPost())
             .RespondWith(Response.Create()
                 .WithStatusCode(201)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(body));
+    }
+
+    private void MapPutJson(string path, string body)
+    {
+        _server
+            .Given(Request.Create().WithPath(path).UsingPut())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
                 .WithHeader("Content-Type", "application/json")
                 .WithBody(body));
     }

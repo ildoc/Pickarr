@@ -89,6 +89,27 @@ export async function postTitleArr(titleId: number, body: ArrAddBody): Promise<T
   return payload as TitleDetail['arr']
 }
 
+export async function setTitleSeasonMonitoring(
+  titleId: number,
+  seasonNumber: number,
+  monitored: boolean,
+): Promise<TitleDetail['arr']> {
+  const response = await fetch(`/api/v1/titles/${titleId}/arr/seasons/${seasonNumber}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ monitored }),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const detail =
+      typeof payload === 'object' && payload && 'detail' in payload
+        ? String((payload as { detail: string }).detail)
+        : `Season monitoring update failed: ${response.status}`
+    throw new ApiError(detail, response.status)
+  }
+  return payload as TitleDetail['arr']
+}
+
 export async function deleteTitleArr(
   titleId: number,
   deleteFiles: boolean,

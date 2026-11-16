@@ -168,6 +168,42 @@ public sealed class SonarrClient(
         return MapSeries(created);
     }
 
+    public async Task<ArrItemSnapshot> SetSeasonMonitoringAsync(
+        int arrId,
+        int seasonNumber,
+        bool monitored,
+        CancellationToken cancellationToken = default)
+    {
+        var (baseUrl, apiKey) = await RequireConfigAsync(cancellationToken);
+        using var get = ArrHttp.Create(HttpMethod.Get, baseUrl, $"series/{arrId}", apiKey);
+        var payload = await ArrHttp.SendAsync<JsonObject>(http, get, logger, cancellationToken);
+        if (payload["seasons"] is not JsonArray seasons)
+        {
+            throw new ArrClientException(424, "Sonarr series response did not contain seasons.");
+        }
+
+        var target = seasons
+            .OfType<JsonObject>()
+            .FirstOrDefault(season => ReadSeasonNumber(season) == seasonNumber);
+        if (target is null)
+        {
+            throw new ArrClientException(404, $"Season {seasonNumber} was not found in Sonarr.");
+        }
+
+        target["monitored"] = monitored;
+        payload["monitored"] = seasons
+            .OfType<JsonObject>()
+            .Any(season => season["monitored"]?.GetValue<bool>() == true);
+
+        using var put = ArrHttp.Create(HttpMethod.Put, baseUrl, $"series/{arrId}", apiKey);
+        put.Content = new StringContent(
+            payload.ToJsonString(ArrJson.Options),
+            System.Text.Encoding.UTF8,
+            "application/json");
+        var updated = await ArrHttp.SendAsync<SeriesDto>(http, put, logger, cancellationToken);
+        return MapSeries(updated);
+    }
+
     public async Task SearchAsync(int arrId, CancellationToken cancellationToken = default)
     {
         var (baseUrl, apiKey) = await RequireConfigAsync(cancellationToken);

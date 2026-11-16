@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { refreshTitleArr } from '../../api/arr'
+import { refreshTitleArr, setTitleSeasonMonitoring } from '../../api/arr'
 import { fetchTitle } from '../../api/catalog'
 import { categoryLabelKey, formatDate, formatRuntime, formatYear } from '../../lib/format'
 import { AddToArrDialog } from '../arr/AddToArrDialog'
@@ -66,6 +66,12 @@ export function TitleDialog({
 
   const refresh = useMutation({
     mutationFn: () => refreshTitleArr(titleId),
+    onSuccess: invalidateTitle,
+  })
+
+  const seasonMonitoring = useMutation({
+    mutationFn: ({ seasonNumber, monitored }: { seasonNumber: number; monitored: boolean }) =>
+      setTitleSeasonMonitoring(titleId, seasonNumber, monitored),
     onSuccess: invalidateTitle,
   })
 
@@ -298,7 +304,24 @@ export function TitleDialog({
                       )}
                     </div>
                     {detail.data.arr.seasons && detail.data.arr.seasons.length > 0 && (
-                      <SeasonTable seasons={detail.data.arr.seasons} />
+                      <>
+                        <SeasonTable
+                          seasons={detail.data.arr.seasons}
+                          pendingSeason={seasonMonitoring.isPending
+                            ? seasonMonitoring.variables?.seasonNumber ?? null
+                            : null}
+                          onToggleMonitoring={(seasonNumber, monitored) =>
+                            seasonMonitoring.mutate({ seasonNumber, monitored })
+                          }
+                        />
+                        {seasonMonitoring.isError && (
+                          <p className="text-sm text-red-300">
+                            {seasonMonitoring.error instanceof Error
+                              ? seasonMonitoring.error.message
+                              : t('arr.updateMonitoringFailed')}
+                          </p>
+                        )}
+                      </>
                     )}
                     <div className="flex flex-wrap gap-2">
                       {detail.data.arr.canAdd && (

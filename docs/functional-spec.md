@@ -206,6 +206,7 @@ Priority (MoSCoW): **M** = Must (MVP), **S** = Should, **C** = Could, **W** = Wo
 | FR-DET-05 | "Search now" action on a title already in the library (launches the search in Sonarr/Radarr). | S |
 | FR-DET-06 | Link to open the title in the Sonarr/Radarr web interface. | C |
 | FR-DET-07 | If the title is available in other configured sources (e.g. also on Netflix US), the tab indicates this. | C |
+| FR-DET-08 | For a series already in Sonarr, enable or disable monitoring for each season from the library status table. | M |
 
 ### 4.6 Preferiti (FR-FAV)
 

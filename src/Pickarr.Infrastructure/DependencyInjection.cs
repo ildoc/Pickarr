@@ -86,6 +86,7 @@ public static class DependencyInjection
         services.AddScoped<IArrLibrarySync, ArrLibrarySync>();
         services.AddScoped<IArrAddService, ArrAddService>();
         services.AddScoped<IArrDeleteService, ArrDeleteService>();
+        services.AddScoped<IArrSeasonMonitoringService, ArrSeasonMonitoringService>();
         services.AddScoped<IArrClientFactory, ArrClientFactory>();
         services.Configure<CatalogBootstrapOptions>(configuration.GetSection(CatalogBootstrapOptions.SectionName));
         services.AddScoped<CatalogBootstrap>();

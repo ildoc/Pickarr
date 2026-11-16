@@ -77,6 +77,7 @@ Votes are highlighted immediately. While a vote is saving, that title's rating c
 - Optional. Configure later or never; without Arr, Pickarr remains a catalog browser and recommendation engine.
 - When configured, add series to Sonarr and movies to Radarr from the title dialog. The library section is omitted for a media type whose instance is not configured.
 - See shared library status on cards and in detail when the matching Arr is configured.
+- For a series already in Sonarr, use the season table in its detail dialog to enable or stop monitoring individual seasons.
 - Delete with confirmation; destructive delete options default off.
 - Periodic Arr sync (and optional webhooks when configured) refreshes status.
 - An Arr add with `X-Pickarr-Profile` stores the profile on the audit row for that profile’s implicit signal; without the header the add is still valid but not attributed for taste.
