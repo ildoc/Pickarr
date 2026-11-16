@@ -557,6 +557,7 @@ Registration:
 
 - At startup and on every settings change, a `ScheduleReconciler` reads `CatalogSources` and settings and registers/updates/removes Hangfire recurring jobs (`RecurringJob.AddOrUpdate` / `RemoveIfExists`) with local `TimeZoneInfo`.
 - Because schedules are recreated from the application DB, Hangfire storage holds only transient state (queues, retries): losing `jobs.db` does not lose configuration.
+- Before initializing Hangfire, run `PRAGMA integrity_check` on a temporary jobs-only copy with all WAL/SHM/rollback-journal sidecars. Confirmed corruption (including SQLite `SQLITE_CORRUPT`/`SQLITE_NOTADB`) moves the original jobs files into `jobs.db.corrupt-<unique-id>/` and recreates persistent SQLite storage. Log the archive and loss of pending jobs/history; recurring schedules are rebuilt. Other check/storage failures do not trigger a reset. Never reset `Pickarr.db` or Data Protection keys; reject job file names that target the main database, its sidecars, paths outside the data directory, or symbolic links.
 - Jobs are classes with `ExecuteAsync(…, CancellationToken)` invoked via `IBackgroundJobClient`; logic lives in `Core` services, not in the jobs.
 - `[DisableConcurrentExecution]` (or a lock on `SyncRuns` in `Running` state for `(Kind, CatalogSourceId)`) prevents concurrent runs (UC-10).
 

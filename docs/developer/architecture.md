@@ -69,6 +69,8 @@ Title read paths (catalog, list, ratings, detail, recommendations, onboarding, a
 
 Schedules reconcile when relevant settings change. Hangfire storage defaults to SQLite under the data path; tests often use Memory.
 
+Before Hangfire initialization, a jobs-only copy (including WAL/SHM/rollback journal) undergoes SQLite `integrity_check`, catching index corruption that otherwise surfaces later during schedule reconciliation. Confirmed corruption archives the original jobs files and recreates persistent storage; schedules are reapplied from `Pickarr.db`. Personal/catalog data and encryption keys are never reset. Other storage errors propagate from the check without triggering recovery.
+
 ## Recommendations (short)
 
 Local, multi-level scoring over titles already present on enabled catalog sources. Signals include explicit votes and optional implicit signals (favorites, Arr add, download). Under cold start (`N_eff < N0`), a household prior from other profiles’ Love/Like can blend into the non-personal slot (capped). Optional ONNX embeddings improve similarity. Full algorithm and settings: `recommendations.md`.

@@ -650,7 +650,7 @@ Dove una decisione è aperta, il documento adotta una proposta predefinita da va
 | D-07 | **Sezione "In scadenza" sul piano free** (solo anteprima dei prossimi 10 per paese). | Mostrata quando i dati ci sono, con nota sulla limitazione. Calendario completo con piano a pagamento. |
 | D-08 | **Nome del progetto.** | "Pickarr" provvisorio. |
 | D-09 | **Versioni minime** di Sonarr (v4) e Radarr (v5). | Da confermare con le istanze in uso. |
-| D-10 | **Storage di Hangfire su SQLite** (pacchetto di comunità). | Spike SP-4; in alternativa storage in memoria, dato che le schedulazioni si ricreano dal DB all'avvio. |
+| D-10 | **Hangfire storage on SQLite** (community package). | Schedules are rebuilt from the main database on startup; Memory remains an alternative. Confirmed jobs-database corruption is archived and persistent storage recreated automatically, losing only Hangfire queues/history, never catalog/profile data or encryption keys. |
 | D-REC-01 | Scope predefinito di *For you*. | Sorgente selezionata (`source`). |
 | D-REC-02 | Altro scope. | Unione delle sorgenti abilitate; nessuno scope oltre i cataloghi importati. |
 | D-REC-03 | Profilo di gusto. | Uno per profilo di casa. Il filtro di catalogo si applica alla lista, non all'apprendimento. Sotto `N0` entra il household prior (Love/Like altrui, tetto 0,5). |

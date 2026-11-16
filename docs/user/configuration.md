@@ -54,6 +54,12 @@ A trailing `/` on `sonarr.url` and `radarr.url` is stripped.
 | `Hangfire__Storage` | `Sqlite` | `Memory` drops the queue on restart. |
 | `Hangfire__Dashboard__Enabled` | `false` | Hangfire dashboard. |
 
+### Hangfire storage recovery
+
+On startup, Pickarr checks a temporary copy of `jobs.db` and its WAL/SHM/rollback-journal sidecars before initializing Hangfire. If SQLite confirms corruption, the original files are moved to `jobs.db.corrupt-<unique-id>/` under the data path and a new persistent jobs database is created. A warning identifies the archive. Pending jobs, retries, and Hangfire history are not restored; recurring schedules are rebuilt from the main database.
+
+This recovery never resets `Pickarr.db`, catalog/profile data, or Data Protection keys. Other storage errors do not trigger a reset. Keep the data directory writable and allow space for the temporary jobs-only copy and any corruption archives. `Hangfire:SqliteFileName`, if overridden, must be a plain file name separate from `Pickarr.db` and its sidecars; symbolic links are rejected. Do not delete the data directory to resolve a storage error.
+
 ## Application settings
 
 | Key | Default | Notes |
