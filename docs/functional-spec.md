@@ -177,7 +177,7 @@ Priority (MoSCoW): **M** = Must (MVP), **S** = Should, **C** = Could, **W** = Wo
 |---|---|---|
 | FR-UI-01 | ** Desktop only ** interface (minimum supported width 1280px) with ** dark theme **. | M |
 | FR-UI-02 | A selector in the header allows you to choose the catalog source (service + country). The choice is remembered between one session and another. | M |
-| FR-UI-03 | Home is a ** grid view ** of the catalog of the selected source, with search bar and quick filters: *All*, * New *, *Expiring*, * Recently removed *. With the recommendations active, a * * dedicated line * * of recommendations for that source (max 25) appears under * All * (without search). *My list* and *For you* (union of sources) are dedicated routes (`/list`, `/for-you`). | M |
+| FR-UI-03 | Home is a **grid view** of the catalog of the selected source, with search bar and quick filters: *All*, *New*, *Expiring*, *Recently removed*. With recommendations active, a dedicated row of recommendations for that source (max 25) appears under *All* (without search) and follows the selected type and genre filters. *My list* and *For you* (union of sources) are dedicated routes (`/list`, `/for-you`). | M |
 | FR-UI-04 | Each card shows poster, title, year, type badge (movie/serie/stand-up), ** library status ** badge, favorite icon, and **vote** checks (* Like */ *Dislike*) when recommendations are enabled. | M |
 | FR-UI-05 | The grid uses infinite scrolling with page loading. It must remain fluid with catalogs of a few thousand titles. | M |
 | FR-UI-06 | Clicking on a card opens the * * detail card * * in a modal window, which can also be reached via a direct URL. | M |

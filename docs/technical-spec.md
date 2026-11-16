@@ -1051,7 +1051,7 @@ src/Pickarr.WebApp/src/
 | `/` | Setup gate, then profile gate: single profile → `/catalog`; valid `pickarr.profileId` → `/catalog`; otherwise `/who` |
 | `/setup` | Mandatory first-run wizard until `setup.completed` |
 | `/who` | Profile selector and management |
-| `/catalog` | Grid for the selected source; filters (`q`, `view=all\|new\|leaving\|removed`, `type`, `genre`, …). With reco enabled and `view=all` without `q`, *For you* row (scope `source`, max 25). `view=favorites` redirects to `/list` |
+| `/catalog` | Grid for the selected source; filters (`q`, `view=all\|new\|leaving\|removed`, `type`, `genre`, …). With reco enabled and `view=all` without `q`, *For you* row (scope `source`, max 25), filtered by the selected type and genre. `view=favorites` redirects to `/list` |
 | `/list` | Profile favorites (cross-provider / cross-country); temporary implicit signal for reco |
 | `/for-you` | Profile recommendations over the union of enabled sources (scope `enabled`) |
 | `/taste` | Taste onboarding |

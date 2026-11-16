@@ -7,18 +7,28 @@ import { TitleCard } from '../catalog/TitleCard'
 
 const CatalogForYouLimit = 25
 
-export function CatalogForYouRow({ sourceId }: { sourceId: number }) {
+export function CatalogForYouRow({
+  sourceId,
+  type = '',
+  genre = '',
+}: {
+  sourceId: number
+  type?: string
+  genre?: string
+}) {
   const { t } = useTranslation()
   const settings = useQuery({ queryKey: ['settings'], queryFn: fetchSettings })
   const recoEnabled = settings.isSuccess && settings.data.reco.enabled !== false
 
   const reco = useQuery({
-    queryKey: ['recommendations', 'source', sourceId, 'catalog-row'],
+    queryKey: ['recommendations', 'source', sourceId, 'catalog-row', type, genre],
     enabled: recoEnabled,
     queryFn: () =>
       fetchRecommendations({
         scope: 'source',
         sourceId,
+        type: type || undefined,
+        genre: genre || undefined,
         page: 1,
         pageSize: CatalogForYouLimit,
       }),

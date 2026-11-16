@@ -145,7 +145,7 @@ MoSCoW priority: **M** for the feature MVP, **S** should, **C** could.
 | ID | Requirement | Pri |
 |---|---|---|
 | FR-REC-RC-01 | **For you** page (`/for-you`): titles ordered by score over the union of enabled sources, infinite scroll. | M |
-| FR-REC-RC-02 | On the selected source’s catalog (`/catalog`), a **dedicated row** shows up to **25** recommendations with scope `source`. The `/for-you` page defaults to scope `enabled` (All providers/countries); choosing a concrete provider + country switches to scope `source` for that catalog. | M |
+| FR-REC-RC-02 | On the selected source’s catalog (`/catalog`), a **dedicated row** shows up to **25** recommendations with scope `source`, respecting the selected type and genre filters. The `/for-you` page defaults to scope `enabled` (All providers/countries); choosing a concrete provider + country switches to scope `source` for that catalog. | M |
 | FR-REC-RC-03 | In the *All enabled sources* scope a title appears once, with `places` (provider name and country) for every enabled source where it has an `Availability`. | M |
 | FR-REC-RC-04 | A title without `Availability` on enabled sources is never returned. | M |
 | FR-REC-RC-05 | With no ratings or signals, *For you* shows the prior (level 0) and declares it, with the learning indicator. | M |

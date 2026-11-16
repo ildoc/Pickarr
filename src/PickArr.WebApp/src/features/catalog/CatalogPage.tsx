@@ -181,7 +181,7 @@ export function CatalogPage() {
       )}
 
       {!emptyReason && sourceId != null && view === 'all' && !debouncedQ && (
-        <CatalogForYouRow sourceId={sourceId} />
+        <CatalogForYouRow sourceId={sourceId} type={type} genre={genre} />
       )}
 
       {!emptyReason && !titlesQuery.isLoading && items.length === 0 && (

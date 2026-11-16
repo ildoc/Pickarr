@@ -7,6 +7,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchCatalogTypes, fetchGenres, fetchSources, fetchTitles } from '../../api/catalog'
 import { fetchProfiles } from '../../api/profiles'
+import { fetchRecommendations } from '../../api/recommendations'
+import { fetchSettings } from '../../api/settings'
 import i18n from '../../i18n'
 import { ProfileProvider } from '../who/profileContext'
 import { CatalogPage } from './CatalogPage'
@@ -23,8 +25,12 @@ vi.mock('../../api/profiles', () => ({
   fetchProfiles: vi.fn(),
 }))
 
-vi.mock('../reco/CatalogForYouRow', () => ({
-  CatalogForYouRow: () => null,
+vi.mock('../../api/recommendations', () => ({
+  fetchRecommendations: vi.fn(),
+}))
+
+vi.mock('../../api/settings', () => ({
+  fetchSettings: vi.fn(),
 }))
 
 vi.mock('../title/TitleDialog', () => ({
@@ -104,6 +110,17 @@ describe('CatalogPage', () => {
     ])
     vi.mocked(fetchCatalogTypes).mockResolvedValue([{ type: 'movie', count: 1 }])
     vi.mocked(fetchGenres).mockResolvedValue([])
+    vi.mocked(fetchSettings).mockResolvedValue({
+      reco: { enabled: true },
+    } as Awaited<ReturnType<typeof fetchSettings>>)
+    vi.mocked(fetchRecommendations).mockResolvedValue({
+      version: 1,
+      stage: 'cold',
+      page: 1,
+      pageSize: 25,
+      total: 0,
+      items: [],
+    })
     vi.mocked(fetchTitles).mockResolvedValue({
       page: 1,
       pageSize: 48,
@@ -134,6 +151,49 @@ describe('CatalogPage', () => {
         expect.objectContaining({ view: 'leaving' }),
       ),
     )
+  })
+
+  it('updates recommendations when type and genre filters change or are cleared', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchGenres).mockResolvedValue([{ id: 28, name: 'Action', count: 1 }])
+    vi.mocked(fetchRecommendations).mockImplementation(async ({ type, genre }) => {
+      const name = type && genre ? 'Action movie' : type ? 'Any movie' : genre ? 'Any action' : 'Any title'
+      return {
+        version: 1,
+        stage: 'cold',
+        page: 1,
+        pageSize: 25,
+        total: 1,
+        items: [{
+          id: 11,
+          name,
+          originalTitle: null,
+          year: 2024,
+          category: 'movie',
+          posterUrl: null,
+          genres: [],
+          ratingTmdb: null,
+          isFavorite: false,
+          rating: null,
+          availability: null,
+          arr: null,
+        }],
+      }
+    })
+    renderAt('/catalog?source=1')
+
+    expect((await screen.findAllByText('Any title')).length).toBeGreaterThan(0)
+    await user.selectOptions(screen.getByLabelText('Type'), 'movie')
+    expect((await screen.findAllByText('Any movie')).length).toBeGreaterThan(0)
+    await user.selectOptions(screen.getByLabelText('Genre'), '28')
+    expect((await screen.findAllByText('Action movie')).length).toBeGreaterThan(0)
+    expect(fetchRecommendations).toHaveBeenLastCalledWith(expect.objectContaining({
+      scope: 'source', sourceId: 1, type: 'movie', genre: '28', page: 1, pageSize: 25,
+    }))
+    await user.selectOptions(screen.getByLabelText('Type'), '')
+    expect((await screen.findAllByText('Any action')).length).toBeGreaterThan(0)
+    await user.selectOptions(screen.getByLabelText('Genre'), '')
+    expect((await screen.findAllByText('Any title')).length).toBeGreaterThan(0)
   })
 
   it('uses the preferred source from localStorage when the URL has none', async () => {

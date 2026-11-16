@@ -10,6 +10,7 @@ On `/catalog`:
 - Quick filters: **All**, **New**, **Leaving**, **Recently removed**.
 - Filters: type, genre, year, library state, sort, include removed.
 - Infinite poster grid with library badges, favorite heart, and rating controls.
+- With recommendations enabled, the **For you** row under **All** (without search) follows the selected provider, country, type, and genre.
 - The preferred source is remembered per profile (`pickarr.sourceId.{profileId}`).
 
 Type and genre options come from titles in the current scope. Sonarr and Radarr are optional: the catalog stays browsable without them. Library actions appear only when the matching instance is configured (series → Sonarr; movies → Radarr).
