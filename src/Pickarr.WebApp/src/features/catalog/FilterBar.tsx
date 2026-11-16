@@ -88,10 +88,10 @@ export function FilterBar({
           <span className="text-sm text-[var(--muted)]">{t('catalog.noSources')}</span>
         ) : (
           <>
-            <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+            <label className="flex max-w-full shrink-0 items-center gap-2 text-sm text-[var(--muted)]">
               {t('catalog.provider')}
               <select
-                className="rounded-md border border-white/10 bg-[var(--surface-2)] px-2 py-2 text-[var(--text)]"
+                className="min-w-0 rounded-md border border-white/10 bg-[var(--surface-2)] px-2 py-2 text-[var(--text)]"
                 value={selected?.providerKey ?? ''}
                 onChange={(e) => onProviderChange(e.target.value)}
               >
@@ -103,10 +103,10 @@ export function FilterBar({
                 ))}
               </select>
             </label>
-            <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+            <label className="flex max-w-full shrink-0 items-center gap-2 text-sm text-[var(--muted)]">
               {t('catalog.country')}
               <select
-                className="rounded-md border border-white/10 bg-[var(--surface-2)] px-2 py-2 text-[var(--text)]"
+                className="min-w-0 rounded-md border border-white/10 bg-[var(--surface-2)] px-2 py-2 text-[var(--text)]"
                 value={countrySourceId ?? ''}
                 onChange={(e) => {
                   const value = e.target.value
@@ -125,10 +125,10 @@ export function FilterBar({
             </label>
           </>
         )}
-        <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+        <label className="flex max-w-full shrink-0 items-center gap-2 text-sm text-[var(--muted)]">
           {t('catalog.type')}
           <select
-            className="rounded-md border border-white/10 bg-[var(--surface-2)] px-2 py-2 text-[var(--text)]"
+            className="min-w-0 rounded-md border border-white/10 bg-[var(--surface-2)] px-2 py-2 text-[var(--text)]"
             value={type}
             onChange={(e) => onTypeChange(e.target.value)}
           >
@@ -140,10 +140,10 @@ export function FilterBar({
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+        <label className="flex max-w-full shrink-0 items-center gap-2 text-sm text-[var(--muted)]">
           {t('catalog.genre')}
           <select
-            className="rounded-md border border-white/10 bg-[var(--surface-2)] px-2 py-2 text-[var(--text)]"
+            className="min-w-0 rounded-md border border-white/10 bg-[var(--surface-2)] px-2 py-2 text-[var(--text)]"
             value={genre}
             onChange={(e) => onGenreChange(e.target.value)}
           >
@@ -161,14 +161,14 @@ export function FilterBar({
             value={q}
             onChange={(e) => onQChange(e.target.value)}
             placeholder={t('catalog.searchPlaceholder')}
-            className="min-w-[280px] flex-1 rounded-md border border-white/10 bg-[var(--surface-2)] px-3 py-2 text-[var(--text)] placeholder:text-[var(--muted)]"
+            className="min-w-0 flex-[1_1_280px] rounded-md border border-white/10 bg-[var(--surface-2)] px-3 py-2 text-[var(--text)] placeholder:text-[var(--muted)]"
           />
         )}
         {!hideSort && (
-          <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+          <label className="flex max-w-full shrink-0 items-center gap-2 text-sm text-[var(--muted)]">
             {t('sort.label')}
             <select
-              className="rounded-md border border-white/10 bg-[var(--surface-2)] px-2 py-2 text-[var(--text)]"
+              className="min-w-0 rounded-md border border-white/10 bg-[var(--surface-2)] px-2 py-2 text-[var(--text)]"
               value={sort}
               onChange={(e) => onSortChange(e.target.value)}
             >
@@ -180,7 +180,7 @@ export function FilterBar({
             </select>
             <button
               type="button"
-              className="rounded-md border border-white/10 bg-[var(--surface-2)] px-2 py-2 text-[var(--text)]"
+              className="shrink-0 rounded-md border border-white/10 bg-[var(--surface-2)] px-2 py-2 text-[var(--text)]"
               aria-label={t('sort.direction')}
               onClick={() => onDirChange(dir === 'asc' ? 'desc' : 'asc')}
             >
