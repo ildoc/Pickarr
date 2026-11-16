@@ -39,6 +39,11 @@ public sealed class ArrLibrarySync(
             var kindKey = kind.ToStorage();
             var now = clock.UtcNow;
             var seenArrIds = new HashSet<int>();
+            var cachedDownloads = await db.ArrLibraryItems.AsNoTracking()
+                .Where(x => x.Kind == kindKey && x.State == ArrStates.Downloaded)
+                .ToListAsync(cancellationToken);
+            await ArrDownloadSignals.RecordAsync(db, cachedDownloads, now, cancellationToken);
+            var syncedItems = new List<ArrLibraryItem>(library.Count);
 
             foreach (var item in library)
             {
@@ -94,6 +99,7 @@ public sealed class ArrLibrarySync(
                 entity.IsAvailable = item.IsAvailable;
                 entity.SyncedAt = now;
                 entity.TitleId = ArrMatcher.MatchTitleId(kind, item, titles);
+                syncedItems.Add(entity);
 
                 db.ArrSeasonStates.RemoveRange(entity.Seasons);
                 entity.Seasons.Clear();
@@ -118,6 +124,7 @@ public sealed class ArrLibrarySync(
                 .ToListAsync(cancellationToken);
             db.ArrLibraryItems.RemoveRange(stale);
 
+            await ArrDownloadSignals.RecordAsync(db, syncedItems, now, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             await syncRuns.SucceedAsync(run.Id, cancellationToken);
             logger.LogInformation("Arr sync {Kind} upserted {Count} items", kind, library.Count);
@@ -167,6 +174,7 @@ public sealed class ArrLibrarySync(
             db.ArrLibraryItems.Add(entity);
         }
 
+        await ArrDownloadSignals.RecordAsync(db, [entity], now, cancellationToken);
         entity.TmdbId = item.TmdbId;
         entity.TvdbId = item.TvdbId;
         entity.ImdbId = item.ImdbId;
@@ -201,6 +209,7 @@ public sealed class ArrLibrarySync(
             });
         }
 
+        await ArrDownloadSignals.RecordAsync(db, [entity], now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -214,6 +223,7 @@ public sealed class ArrLibrarySync(
             return;
         }
 
+        await ArrDownloadSignals.RecordAsync(db, [entity], clock.UtcNow, cancellationToken);
         db.ArrLibraryItems.Remove(entity);
         await db.SaveChangesAsync(cancellationToken);
     }

@@ -139,6 +139,118 @@ public sealed class ArrClientAndSyncTests : IAsyncLifetime
         (await db.ArrLibraryItems.CountAsync()).ShouldBe(2);
     }
 
+    [Theory]
+    [InlineData(ArrKind.Radarr)]
+    [InlineData(ArrKind.Sonarr)]
+    public async Task Completed_download_signal_is_profile_scoped_idempotent_and_survives_removal(ArrKind kind)
+    {
+        await using var db = await CreateDbAsync();
+        var now = DateTime.UtcNow;
+        var title = new Title
+        {
+            MediaType = kind == ArrKind.Radarr ? MediaTypes.Movie : MediaTypes.Series,
+            Category = kind == ArrKind.Radarr ? TitleCategories.Movie : TitleCategories.Series,
+            TmdbType = kind == ArrKind.Radarr ? "movie" : "tv",
+            TmdbId = 603,
+            MetadataStatus = MetadataStatuses.Ready,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var owner = new Profile { Name = "Owner", Color = Profile.DefaultColor, CreatedAt = now };
+        var other = new Profile { Name = "Other", Color = Profile.DefaultColor, CreatedAt = now };
+        db.Titles.Add(title);
+        db.Profiles.AddRange(owner, other);
+        await db.SaveChangesAsync();
+        foreach (var (profileId, outcome) in new (int?, string)[]
+                 { (owner.Id, ArrAuditOutcomes.Success), (other.Id, ArrAuditOutcomes.Failed), (null, ArrAuditOutcomes.Success) })
+        {
+            db.ArrAuditLogs.Add(new ArrAuditLog
+            {
+                ProfileId = profileId,
+                TitleId = title.Id,
+                ArrId = 10,
+                Kind = kind.ToStorage(),
+                At = now,
+                Action = ArrAuditActions.Add,
+                Outcome = outcome,
+                Options = "{}",
+            });
+        }
+        await db.SaveChangesAsync();
+
+        var settings = CreateSettings(sonarr: true, radarr: true);
+        var http = new HttpClient { BaseAddress = new Uri(_server.Urls[0]) };
+        var factory = new ArrClientFactory(
+            new SonarrClient(http, settings, NullLogger<SonarrClient>.Instance),
+            new RadarrClient(http, settings, NullLogger<RadarrClient>.Instance), settings);
+        var sync = new ArrLibrarySync(db, factory, new SystemClock(),
+            new EfSyncRunStore(db, new SystemClock(), new TestSettingsStore()), NullLogger<ArrLibrarySync>.Instance);
+        var item = new ArrItemSnapshot(10, "Downloaded", 2020, 603, null, null, true, null, 100,
+            true, true, 8, 8, 8, [new ArrSeasonSnapshot(1, true, 8, 8, 8, 100)]);
+
+        await sync.UpsertItemAsync(kind, item);
+        await sync.UpsertItemAsync(kind, item);
+        var download = await db.ArrAuditLogs.SingleAsync(a => a.Action == ArrAuditActions.Download);
+        download.ProfileId.ShouldBe(owner.Id);
+        download.TitleId.ShouldBe(title.Id);
+        download.Outcome.ShouldBe(ArrAuditOutcomes.Success);
+
+        // Later missing files must not erase an observed completion.
+        await sync.UpsertItemAsync(kind, item with
+        {
+            HasFile = false,
+            Seasons = [new ArrSeasonSnapshot(1, true, 0, 8, 8, 0)],
+        });
+        await sync.RemoveItemAsync(kind, item.ArrId);
+        (await db.ArrLibraryItems.CountAsync()).ShouldBe(0);
+        (await db.ArrAuditLogs.CountAsync(a => a.Action == ArrAuditActions.Download)).ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cached_download_is_preserved_before_explicit_or_external_deletion(bool externalDeletion)
+    {
+        await using var db = await CreateDbAsync();
+        var now = DateTime.UtcNow;
+        var owner = new Profile { Name = "Owner", Color = Profile.DefaultColor, CreatedAt = now };
+        db.Profiles.Add(owner);
+        await db.SaveChangesAsync();
+        db.ArrAuditLogs.Add(new ArrAuditLog
+        {
+            ProfileId = owner.Id, TitleId = 42, ArrId = 10, Kind = ArrKinds.Radarr,
+            At = now, Action = ArrAuditActions.Add, Outcome = ArrAuditOutcomes.Success, Options = "{}",
+        });
+        db.ArrLibraryItems.Add(new ArrLibraryItem
+        {
+            TitleId = 42, ArrId = 10, Kind = ArrKinds.Radarr, ArrTitle = "Cached",
+            State = ArrStates.Downloaded, SyncedAt = now,
+        });
+        db.Titles.Add(new Title
+        {
+            Id = 42, MediaType = MediaTypes.Movie, Category = TitleCategories.Movie,
+            MetadataStatus = MetadataStatuses.Ready, CreatedAt = now, UpdatedAt = now,
+        });
+        await db.SaveChangesAsync();
+        MapJson("/api/v3/movie", "[]");
+        MapJson("/api/v3/queue", "{\"records\":[],\"totalRecords\":0}");
+        var settings = CreateSettings(sonarr: false, radarr: true);
+        var http = new HttpClient { BaseAddress = new Uri(_server.Urls[0]) };
+        var factory = new ArrClientFactory(
+            new SonarrClient(http, settings, NullLogger<SonarrClient>.Instance),
+            new RadarrClient(http, settings, NullLogger<RadarrClient>.Instance), settings);
+        var sync = new ArrLibrarySync(db, factory, new SystemClock(),
+            new EfSyncRunStore(db, new SystemClock(), new TestSettingsStore()), NullLogger<ArrLibrarySync>.Instance);
+
+        if (externalDeletion) await sync.SyncAsync(ArrKind.Radarr);
+        else await sync.RemoveItemAsync(ArrKind.Radarr, 10);
+
+        (await db.ArrLibraryItems.CountAsync()).ShouldBe(0);
+        var download = await db.ArrAuditLogs.SingleAsync(a => a.Action == ArrAuditActions.Download);
+        download.ProfileId.ShouldBe(owner.Id);
+        download.TitleId.ShouldBe(42);
+    }
+
     private MemorySettingsStore CreateSettings(bool sonarr, bool radarr = false)
     {
         var settings = new MemorySettingsStore();

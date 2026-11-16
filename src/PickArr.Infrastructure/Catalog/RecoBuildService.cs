@@ -444,12 +444,21 @@ public sealed class RecoBuildService(
 
         var downloaded = await db.ArrLibraryItems.AsNoTracking()
             .Where(a => a.TitleId != null
-                        && arrAddSet.Contains(a.TitleId.Value)
-                        && a.State == ArrStates.Downloaded)
+                        && a.State == ArrStates.Downloaded
+                        && db.ArrAuditLogs.Any(add => add.ProfileId == profileId
+                            && add.TitleId == a.TitleId && add.Kind == a.Kind
+                            && add.Action == ArrAuditActions.Add && add.Outcome == ArrAuditOutcomes.Success))
             .Select(a => a.TitleId!.Value)
             .Distinct()
             .ToListAsync(cancellationToken);
         var downloadedSet = downloaded.ToHashSet();
+        var historicalDownloads = await db.ArrAuditLogs.AsNoTracking()
+            .Where(a => a.ProfileId == profileId && a.TitleId != null
+                        && a.Action == ArrAuditActions.Download && a.Outcome == ArrAuditOutcomes.Success)
+            .Select(a => a.TitleId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        downloadedSet.UnionWith(historicalDownloads);
 
         var titleIds = ratings.Select(r => r.TitleId)
             .Concat(favoriteSet)

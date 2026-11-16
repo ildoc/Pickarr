@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useIsMutating } from '@tanstack/react-query'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TitleListItem } from '../../api/types'
@@ -25,15 +26,16 @@ export function TitleCard({
   const detailParams = new URLSearchParams(params)
   detailParams.set('title', String(title.id))
   const [exiting, setExiting] = useState(false)
+  const ratingPending = useIsMutating({ mutationKey: ['rating', title.id] }) > 0
 
   useEffect(() => {
-    if (!dismissOnRate || title.rating == null) {
+    if (!dismissOnRate || title.rating == null || ratingPending) {
       setExiting(false)
       return
     }
     const timer = window.setTimeout(() => setExiting(true), RECO_DISMISS_HOLD_MS)
     return () => window.clearTimeout(timer)
-  }, [dismissOnRate, title.rating])
+  }, [dismissOnRate, title.rating, ratingPending])
 
   return (
     <Link

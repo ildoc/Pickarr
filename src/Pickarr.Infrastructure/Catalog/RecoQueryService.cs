@@ -275,6 +275,7 @@ public sealed class RecoQueryService(
         var newCutoff = clock.UtcNow.AddDays(-newWindow);
 
         var titles = await db.Titles.AsNoTracking()
+            .AsSplitQuery()
             .Include(t => t.Localizations)
             .Include(t => t.TitleGenres).ThenInclude(tg => tg.Genre)!.ThenInclude(g => g!.Localizations)
             .Include(t => t.Favorites)
@@ -736,6 +737,7 @@ public sealed class RecoQueryService(
         var newCutoff = clock.UtcNow.AddDays(-newWindow);
 
         var titles = await db.Titles.AsNoTracking()
+            .AsSplitQuery()
             .Include(t => t.Localizations)
             .Include(t => t.TitleGenres).ThenInclude(tg => tg.Genre)!.ThenInclude(g => g!.Localizations)
             .Include(t => t.Favorites)
@@ -1031,6 +1033,7 @@ public sealed class RecoQueryService(
         var newCutoff = clock.UtcNow.AddDays(-newWindow);
 
         var titles = await db.Titles.AsNoTracking()
+            .AsSplitQuery()
             .Include(t => t.Localizations)
             .Include(t => t.TitleGenres).ThenInclude(tg => tg.Genre)!.ThenInclude(g => g!.Localizations)
             .Include(t => t.Favorites)

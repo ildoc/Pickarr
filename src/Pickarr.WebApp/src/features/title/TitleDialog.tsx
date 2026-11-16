@@ -110,6 +110,7 @@ export function TitleDialog({
         return
       }
 
+      if (event.repeat || ratingMutation.isPending) return
       const current = detail.data.rating ?? null
       if (key === 'o') {
         ratingMutation.mutate(current === 'love' ? null : 'love')

@@ -1,19 +1,23 @@
 using System.Text.Json;
+using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Pickarr.Core.Abstractions;
 using Pickarr.Core.Catalog;
 using Pickarr.Core.Domain;
 using Pickarr.Core.Domain.Entities;
 using Pickarr.Core.Metadata;
+using Pickarr.Core.Recommendations;
 using Pickarr.Core.Settings;
 using Pickarr.Infrastructure.Catalog;
 using Pickarr.Infrastructure.Persistence;
 using Shouldly;
+using Xunit.Abstractions;
 
 namespace Pickarr.Infrastructure.Tests;
 
-public sealed class TitleQueryServiceTests
+public sealed class TitleQueryServiceTests(ITestOutputHelper output)
 {
     private sealed class FixedClock(DateTime utcNow) : IClock
     {
@@ -487,6 +491,126 @@ public sealed class TitleQueryServiceTests
         (await db.Favorites.CountAsync()).ShouldBe(0);
     }
 
+    [Fact]
+    public async Task Rich_household_pages_stay_under_300ms_at_10000_titles()
+    {
+        await using var db = await CreateDbAsync();
+        var source = await SeedCatalogAsync(db);
+        var now = DateTime.UtcNow;
+        var profiles = Enumerable.Range(1, 10).Select(i => new Profile
+        {
+            Name = $"Profile {i}", Color = Profile.DefaultColor, IsAdmin = i == 1, CreatedAt = now,
+        }).ToList();
+        var sources = new[] { "US", "GB", "DE", "FR" }.Select(country => new CatalogSource
+        {
+            ProviderId = source.ProviderId, CountryCode = country, MetadataLanguage = "en-US", IsEnabled = true,
+        }).Prepend(source).ToList();
+        var genres = Enumerable.Range(1, 6).Select(id => new Genre
+        {
+            Id = id,
+            Localizations = new[] { "it-IT", "en-US" }.Select(language => new GenreLocalization
+            {
+                GenreId = id, Language = language, Name = $"Genre {id}",
+            }).ToList(),
+        }).ToList();
+        db.Profiles.AddRange(profiles);
+        db.CatalogSources.AddRange(sources.Skip(1));
+        db.Genres.AddRange(genres);
+        var titles = Enumerable.Range(1, 10000).Select(i => new Title
+        {
+            OriginalTitle = $"Title {i}", OriginalTitleNormalized = $"title {i}",
+            MediaType = MediaTypes.Movie, Category = TitleCategories.Movie, ReleaseYear = 2020,
+            MetadataStatus = MetadataStatuses.Ready, CreatedAt = now, UpdatedAt = now,
+        }).ToList();
+        db.Titles.AddRange(titles);
+        await db.SaveChangesAsync();
+        db.Availabilities.AddRange(titles.Select(t => new Availability
+        {
+            TitleId = t.Id, CatalogSourceId = source.Id, FirstSeenAt = now, LastSeenAt = now, AddedAt = now,
+        }));
+        foreach (var title in titles.Take(48))
+        {
+            foreach (var language in new[] { "it-IT", "en-US", "fr-FR", "de-DE", "es-ES" })
+            {
+                title.Localizations.Add(new TitleLocalization
+                {
+                    Language = language, Name = title.OriginalTitle!, NameNormalized = title.OriginalTitleNormalized!,
+                    Overview = new string('x', 1000), FetchedAt = now,
+                });
+            }
+            foreach (var genre in genres) title.TitleGenres.Add(new TitleGenre { GenreId = genre.Id });
+            foreach (var profile in profiles.Take(9))
+            {
+                title.Favorites.Add(new Favorite { ProfileId = profile.Id, CreatedAt = now });
+                title.WatchedItems.Add(new Watched { ProfileId = profile.Id, WatchedAt = now });
+                title.Ratings.Add(new Rating { ProfileId = profile.Id, Value = RatingValues.Like, RatedAt = now });
+            }
+            foreach (var extraSource in sources.Skip(1))
+            {
+                title.Availabilities.Add(new Availability
+                {
+                    CatalogSourceId = extraSource.Id, FirstSeenAt = now, LastSeenAt = now, AddedAt = now,
+                });
+            }
+        }
+        db.RecoStates.Add(new RecoState { ProfileId = profiles[9].Id, CurrentVersion = 1, Stage = RecoLearning.StageCold });
+        db.Recommendations.AddRange(titles.Select((title, index) => new Recommendation
+        {
+            ProfileId = profiles[9].Id, Version = 1, TitleId = title.Id, Rank = index + 1, Score = 1, Prior = 1,
+        }));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        var settings = new MemorySettingsStore();
+        await settings.SetAsync(SettingsKeys.RecoExploreRate, "0", false);
+        var catalog = new TitleQueryService(db, settings, new FixedClock(now));
+        var reco = new RecoQueryService(db, settings, new FixedClock(now));
+        var request = new TitleQueryRequest(Q: "title", Sort: "year", Dir: "asc");
+        var recommendationRequest = new RecommendationsQuery(SourceId: source.Id, Scope: RecoMembership.ScopeSource,
+            Diversify: false, ProfileId: profiles[9].Id);
+
+        // Warm EF query compilation separately from the steady-state read budget.
+        await catalog.QueryTitlesAsync(source.Id, request, personalProfileId: profiles[0].Id);
+        await catalog.GetTitleAsync(titles[0].Id, source.Id, personalProfileId: profiles[0].Id);
+        await reco.QueryAsync(recommendationRequest);
+        var timings = new Dictionary<string, List<double>>
+        {
+            ["catalog/search"] = [], ["detail"] = [], ["recommendations"] = [],
+        };
+        for (var sample = 0; sample < 10; sample++)
+        {
+            var timer = Stopwatch.StartNew();
+            var page = await catalog.QueryTitlesAsync(source.Id, request, personalProfileId: profiles[0].Id);
+            timings["catalog/search"].Add(timer.Elapsed.TotalMilliseconds);
+            page.Total.ShouldBe(10000);
+            page.Items.Count.ShouldBe(48);
+            page.Items[0].Genres.Count.ShouldBe(6);
+            page.Items[0].Places!.Count.ShouldBe(5);
+            page.Items[0].Rating.ShouldBe("like");
+            page.Items[0].IsFavorite.ShouldBeTrue();
+            page.Items[0].IsWatched.ShouldBeTrue();
+
+            timer.Restart();
+            var detail = await catalog.GetTitleAsync(titles[0].Id, source.Id, personalProfileId: profiles[0].Id);
+            timings["detail"].Add(timer.Elapsed.TotalMilliseconds);
+            detail!.Availability.Count.ShouldBe(5);
+            detail!.Rating.ShouldBe("like");
+
+            timer.Restart();
+            var recommendations = await reco.QueryAsync(recommendationRequest);
+            timings["recommendations"].Add(timer.Elapsed.TotalMilliseconds);
+            recommendations.Total.ShouldBe(10000);
+            recommendations.Items.Count.ShouldBe(48);
+            recommendations.Items[0].Rating.ShouldBeNull();
+            recommendations.Items[0].IsFavorite.ShouldBeFalse();
+        }
+        foreach (var (name, samples) in timings)
+        {
+            var p95 = samples.Order().ElementAt((int)Math.Ceiling(samples.Count * 0.95) - 1);
+            output.WriteLine($"{name}: p95 {p95:F1} ms (10k titles, 10 profiles, 48 rich cards)");
+            p95.ShouldBeLessThan(300, $"{name} exceeds the NFR-01/NFR-REC-01 read budget");
+        }
+    }
+
     private static async Task<MemorySettingsStore> ConfigureArrAsync(bool sonarr, bool radarr)
     {
         var settings = new MemorySettingsStore();
@@ -509,7 +633,8 @@ public sealed class TitleQueryServiceTests
     {
         var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<PickarrDbContext>().UseSqlite(connection).Options;
+        var options = new DbContextOptionsBuilder<PickarrDbContext>().UseSqlite(connection)
+            .ConfigureWarnings(warnings => warnings.Throw(RelationalEventId.MultipleCollectionIncludeWarning)).Options;
         var db = new PickarrDbContext(options);
         await db.Database.EnsureCreatedAsync();
         return db;

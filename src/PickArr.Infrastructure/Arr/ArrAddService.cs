@@ -162,6 +162,11 @@ public sealed class ArrAddService(
                 profileId,
                 cancellationToken);
 
+            var cachedDownload = await db.ArrLibraryItems.AsNoTracking()
+                .Where(a => a.Kind == kind.ToStorage() && a.ArrId == created.ArrId)
+                .ToListAsync(cancellationToken);
+            await ArrDownloadSignals.RecordAsync(db, cachedDownload, clock.UtcNow, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
             var detail = await titles.GetTitleAsync(titleId, sourceId: null, cancellationToken);
             return detail?.Arr
                    ?? throw new InvalidOperationException("Title detail missing after Arr add.");

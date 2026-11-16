@@ -1,4 +1,5 @@
 using Hangfire;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Pickarr.Core.Abstractions;
@@ -482,6 +483,31 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
         var otherState = await db.RecoStates.SingleAsync(s => s.ProfileId == other.Id);
         adminState.EffectiveN.ShouldBe(1);
         otherState.EffectiveN.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Historical_download_keeps_its_weight_after_deletion_and_explicit_rating_still_wins()
+    {
+        var (db, build, _, profileId) = await SeedL1Async();
+        var now = DateTime.UtcNow;
+        db.ArrAuditLogs.AddRange(new[] { ArrAuditActions.Add, ArrAuditActions.Download, ArrAuditActions.Delete }
+            .Select(action => new ArrAuditLog
+            {
+                ProfileId = profileId, TitleId = 101, Kind = ArrKinds.Radarr, At = now,
+                Action = action, Outcome = ArrAuditOutcomes.Success, Options = "{}",
+            }));
+        await db.SaveChangesAsync();
+
+        await build.BuildAsync(profileId);
+        (await db.RecoStates.SingleAsync(s => s.ProfileId == profileId)).EffectiveN.ShouldBe(1);
+        (await db.ArrLibraryItems.CountAsync()).ShouldBe(0);
+
+        db.Ratings.Add(new Rating { ProfileId = profileId, TitleId = 101, Value = RatingValues.Dislike, RatedAt = now });
+        await db.SaveChangesAsync();
+        await build.BuildAsync(profileId);
+        var state = await db.RecoStates.SingleAsync(s => s.ProfileId == profileId);
+        state.EffectiveN.ShouldBe(1);
+        JsonSerializer.Deserialize<Dictionary<string, double>>(state.ProfileJson!)!.Values.ShouldAllBe(weight => weight < 0);
     }
 
     private static void SeedUnitEmbedding(PickarrDbContext db, int titleId, float[] vector)

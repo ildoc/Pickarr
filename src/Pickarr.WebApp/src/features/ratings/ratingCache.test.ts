@@ -140,4 +140,16 @@ describe('applyOptimisticRating', () => {
     expect(row?.items.map((item) => item.id)).toEqual([99])
     expect(row?.total).toBe(1)
   })
+
+  it('does not let an old dismiss timer remove a recommendation whose vote was cleared', () => {
+    const client = new QueryClient()
+    const key = ['recommendations', 'source', 7, 'catalog-row']
+    client.setQueryData(key, {
+      version: 1, stage: 'cold', page: 1, pageSize: 25, total: 1,
+      items: [listItem(42, 'like')],
+    } satisfies RecommendationsPage)
+    applyOptimisticRating(client, 42, null)
+    removeRatedRecommendation(client, 42)
+    expect(client.getQueryData<RecommendationsPage>(key)?.items.map((item) => item.id)).toEqual([42])
+  })
 })

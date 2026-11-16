@@ -321,7 +321,7 @@ Unique index `(Kind, ArrId)`; indexes on `TmdbId`, `TvdbId`, `TitleId`.
 
 **`ArrSeasonStates`** — PK `(ArrLibraryItemId, SeasonNumber)`: `Monitored`, `EpisodeFileCount`, `EpisodeCount`, `TotalEpisodeCount`, `SizeOnDisk`, `State`, `QueueProgress`.
 
-**`ArrAuditLog`**: `Id`, `At`, `Action` (`Add`/`Delete`), `Kind`, `ArrId`, `TitleId` null, `ProfileId` null, `Options` (JSON), `Outcome`, `Error` null. `ArrLibraryItems` stays global (no `ProfileId`). An Add with header `X-Pickarr-Profile` stores the `ProfileId` and feeds only that profile; without the header the action is valid and the taste signal is not attributed. Migrated history goes to the admin.
+**`ArrAuditLog`**: `Id`, `At`, `Action` (`Add`/`Download`/`Delete`), `Kind`, `ArrId`, `TitleId` null, `ProfileId` null, `Options` (JSON), `Outcome`, `Error` null. `ArrLibraryItems` stays global (no `ProfileId`). An Add with header `X-Pickarr-Profile` stores the `ProfileId` and feeds only that profile; without the header the action is valid and the taste signal is not attributed. Sync/refresh records observed completed downloads as successful `Download` entries for profiles with a successful Add for the same title and Arr kind. These signals survive library deletion or missing files; live and historical completion count once per title. Cached completions are preserved before state changes or removal. This uses the existing audit schema, without a migration. Migrated history goes to the admin.
 
 **`SyncRuns`**
 
@@ -1069,7 +1069,7 @@ Active profile in `localStorage` `pickarr.profileId`; the client sends it as `X-
 - **Filters/search:** source of truth = URL (`useSearchParams`); search field has 300 ms debounce.
 - **Grid:** `useInfiniteQuery` + `@tanstack/react-virtual`. Virtualized rows are computed from container width (2:3 cards). `placeholderData: keepPreviousData` to avoid flicker on filter change.
 - **Favorites:** mutation with optimistic update on `titles` and `title`, rollback on error.
-- **Ratings:** `RatingButtons` with real `onMutate` (do not copy the favorite as-is); after a rating invalidate `titles`/`title`/`recommendations`/`ratings` and re-poll status until `version` changes (SSE not required).
+- **Ratings:** `RatingButtons` with `onMutate` and a shared per-title pending key. Card, dialog, and keyboard cannot send overlapping votes for the same title while saving; the selected vote is highlighted immediately. Rollback restores only that title's rating and shows an error. Shared-list invalidation waits for the final pending rating mutation and includes `titles`/all `title` details/`recommendations`/`ratings`/`similar`/status. Recommended cards remain visible while saving before the saved-vote dismiss animation.
 - **Library state:** 30 s `refetchInterval` for the open card and `refetchOnWindowFocus` for the grid; after add/delete invalidate `['title', id]` and `['titles']`. If SSE is active, events invalidate the same keys and polling stops.
 - **Errors:** an interceptor turns `problem+json` into typed errors with `code`; the UI maps `code` to translated messages (`errors.ARR_UNREACHABLE`, …) and falls back to `detail`.
 

@@ -4,6 +4,7 @@ public static class ArrAuditActions
 {
     public const string Add = "Add";
     public const string Delete = "Delete";
+    public const string Download = "Download";
 }
 
 public static class ArrAuditOutcomes

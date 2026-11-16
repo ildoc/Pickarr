@@ -219,6 +219,7 @@ public sealed class TitleQueryService(
             .ToListAsync(cancellationToken);
 
         var titles = await db.Titles.AsNoTracking()
+            .AsSplitQuery()
             .Where(t => pageIds.Contains(t.Id))
             .Include(t => t.Favorites)
             .Include(t => t.WatchedItems)
@@ -432,6 +433,7 @@ public sealed class TitleQueryService(
         int? personalProfileId = null)
     {
         var title = await db.Titles.AsNoTracking()
+            .AsSplitQuery()
             .Include(t => t.Favorites)
             .Include(t => t.WatchedItems)
             .Include(t => t.Ratings)

@@ -58,6 +58,8 @@ Anyone can edit their own name, color, and reco toggles (`useImplicit`, `exclude
 
 Explicit votes on a title (per profile): **Love**, **Like**, **Dislike**, **Not interested**. **Hide** (watched) is separate and excludes from For you by default without adding taste weight.
 
+Votes are highlighted immediately. While a vote is saving, that title's rating controls are temporarily disabled, including in an open detail dialog. Failed saves restore the previous vote and show an error so you can retry. Recommended cards stay visible while saving, then briefly show the saved vote before fading out.
+
 **For you** (`/for-you`) shows local recommendations over titles already in enabled catalogs:
 
 - Default filter: **All** providers and countries (union of enabled sources). Provider and country each offer an All option so the cross-catalog view is explicit.
@@ -77,6 +79,8 @@ Explicit votes on a title (per profile): **Love**, **Like**, **Dislike**, **Not 
 - Delete with confirmation; destructive delete options default off.
 - Periodic Arr sync (and optional webhooks when configured) refreshes status.
 - An Arr add with `X-Pickarr-Profile` stores the profile on the audit row for that profile’s implicit signal; without the header the add is still valid but not attributed for taste.
+- When sync or refresh observes a completed download after that profile's add, it records a persistent positive signal. The default add (+0.6) and download (+0.4) weights sum to +1. Deleting the title or its files later does not remove either signal. Explicit ratings take precedence; disabling implicit signals ignores both.
+- Downloads already deleted before Pickarr observed their completion cannot be reconstructed. Existing cached completed downloads are recorded during the next successful sync/refresh or before a deletion.
 
 ## First-run setup
 

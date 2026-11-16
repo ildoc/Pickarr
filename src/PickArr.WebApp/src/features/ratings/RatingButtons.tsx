@@ -39,13 +39,14 @@ export function RatingButtons({
   const { t } = useTranslation()
   const settings = useQuery({ queryKey: ['settings'], queryFn: fetchSettings })
   const mutation = useRatingMutation(titleId)
+  const displayedRating = mutation.pendingRating === undefined ? rating : mutation.pendingRating
 
   if (settings.data && !settings.data.reco.enabled) {
     return null
   }
 
   const toggle = (value: RatingValue) => {
-    const next: UserRating = rating === value ? null : value
+    const next: UserRating = displayedRating === value ? null : value
     mutation.mutate(next)
   }
 
@@ -63,11 +64,12 @@ export function RatingButtons({
           <button
             key={value}
             type="button"
-            aria-pressed={rating === value}
+            aria-pressed={displayedRating === value}
             aria-busy={mutation.isPending}
+            disabled={mutation.isPending}
             onClick={() => toggle(value)}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
-              rating === value
+              displayedRating === value
                 ? dialogActive[value]
                 : 'bg-white/10 text-[var(--text)] hover:bg-white/15'
             }`}
@@ -75,6 +77,7 @@ export function RatingButtons({
             {label}
           </button>
         ))}
+        {mutation.isError && <span role="alert" className="text-xs text-rose-400">{t('ratings.saveFailed')}</span>}
       </div>
     )
   }
@@ -83,7 +86,7 @@ export function RatingButtons({
     <div
       className={`flex items-center gap-0.5 ${className}`}
       onClick={stopCardNavigation}
-      onPointerDown={stopCardNavigation}
+      onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
     >
       {(
@@ -97,13 +100,14 @@ export function RatingButtons({
         <button
           key={value}
           type="button"
-          aria-pressed={rating === value}
+          aria-pressed={displayedRating === value}
           aria-label={label}
           title={label}
           aria-busy={mutation.isPending}
+          disabled={mutation.isPending}
           onClick={() => toggle(value)}
           className={`rounded-full p-1.5 text-sm leading-none transition ${
-            rating === value
+            displayedRating === value
               ? compactActive[value]
               : 'text-white/70 hover:bg-white/15 hover:text-white'
           }`}
@@ -111,6 +115,7 @@ export function RatingButtons({
           {symbol}
         </button>
       ))}
+      {mutation.isError && <span role="alert" className="text-xs text-rose-400">{t('ratings.saveFailed')}</span>}
     </div>
   )
 }

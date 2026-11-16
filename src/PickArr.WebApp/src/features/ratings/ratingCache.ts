@@ -4,7 +4,6 @@ import type {
   RatingValue,
   RecommendationsPage,
   TitleDetail,
-  TitleListItem,
 } from '../../api/types'
 
 export type UserRating = RatingValue | null
@@ -78,7 +77,7 @@ function stripRecommendationTitle(
   page: RecommendationsPage,
   titleId: number,
 ): RecommendationsPage {
-  const items = page.items.filter((item) => item.id !== titleId)
+  const items = page.items.filter((item) => item.id !== titleId || item.rating == null)
   const removed = page.items.length - items.length
   return {
     ...page,
@@ -104,24 +103,32 @@ function patchRecommendations(
   return data
 }
 
-function patchRatingsLists(
-  data: InfiniteData<PagedTitles> | undefined,
+export function restoreOptimisticRating(
+  queryClient: QueryClient,
   titleId: number,
-  rating: UserRating,
-): InfiniteData<PagedTitles> | undefined {
-  if (!isPagedTitles(data)) return data
-  return {
-    ...data,
-    pages: data.pages.map((page) => {
-      const items = page.items
-        .map((item) => {
-          if (item.id !== titleId) return item
-          if (rating == null) return null
-          return { ...item, rating }
-        })
-        .filter((item): item is TitleListItem => item != null)
-      return { ...page, items }
-    }),
+  snapshots: Array<[readonly unknown[], unknown]>,
+) {
+  for (const [key, previous] of snapshots) {
+    if (isPagedTitles(previous)) {
+      const previousItem = previous.pages.flatMap((page) => page.items).find((item) => item.id === titleId)
+      if (!previousItem) continue
+      queryClient.setQueryData(key, (current: unknown) =>
+        isPagedTitles(current) ? patchPagedRating(current, titleId, previousItem.rating ?? null) : current,
+      )
+    } else if (isRecommendationsPage(previous)) {
+      const previousItem = previous.items.find((item) => item.id === titleId)
+      if (!previousItem) continue
+      queryClient.setQueryData(key, (current: unknown) =>
+        isRecommendationsPage(current)
+          ? patchRecommendationsPage(current, titleId, previousItem.rating ?? null)
+          : current,
+      )
+    } else if (previous && typeof previous === 'object' && 'id' in previous && 'rating' in previous) {
+      const detail = previous as TitleDetail
+      queryClient.setQueryData<TitleDetail>(key, (current) =>
+        current ? { ...current, rating: detail.rating } : current,
+      )
+    }
   }
 }
 
@@ -138,7 +145,7 @@ export function applyOptimisticRating(
     patchPagedRating(data, titleId, rating),
   )
   queryClient.setQueriesData<InfiniteData<PagedTitles>>({ queryKey: ['ratings'] }, (data) =>
-    patchRatingsLists(data, titleId, rating),
+    patchPagedRating(data, titleId, rating),
   )
   queryClient.setQueriesData<InfiniteData<RecommendationsPage> | RecommendationsPage>(
     { queryKey: ['recommendations'] },
@@ -170,16 +177,16 @@ export function removeRatedRecommendation(queryClient: QueryClient, titleId: num
 
 export async function invalidateRatingQueries(
   queryClient: QueryClient,
-  titleId: number,
   options?: { includeRecommendations?: boolean },
 ) {
   const includeRecommendations = options?.includeRecommendations !== false
   const tasks = [
     queryClient.invalidateQueries({ queryKey: ['titles'] }),
     queryClient.invalidateQueries({ queryKey: ['my-list'] }),
-    queryClient.invalidateQueries({ queryKey: ['title', titleId] }),
+    queryClient.invalidateQueries({ queryKey: ['title'] }),
     queryClient.invalidateQueries({ queryKey: ['ratings'] }),
     queryClient.invalidateQueries({ queryKey: ['reco-status'] }),
+    queryClient.invalidateQueries({ queryKey: ['similar'] }),
   ]
   if (includeRecommendations) {
     tasks.push(queryClient.invalidateQueries({ queryKey: ['recommendations'] }))

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { I18nextProvider } from 'react-i18next'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -36,6 +36,8 @@ function renderButtons(rating: 'love' | 'like' | 'dislike' | 'not_interested' | 
 describe('RatingButtons', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(setRating).mockResolvedValue(undefined)
+    vi.mocked(clearRating).mockResolvedValue(undefined)
     vi.mocked(fetchSettings).mockResolvedValue({
       reco: { enabled: true },
     } as Awaited<ReturnType<typeof fetchSettings>>)
@@ -92,5 +94,35 @@ describe('RatingButtons', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Like' })).toBeNull()
     })
+  })
+
+  it('shows the selected vote and prevents accidental double clicks while saving', async () => {
+    let finish!: () => void
+    vi.mocked(setRating).mockReturnValue(new Promise<void>((resolve) => { finish = resolve }))
+    const user = userEvent.setup()
+    renderButtons(null)
+    const like = await screen.findByRole('button', { name: 'Like' })
+    await user.click(like)
+    await waitFor(() => expect(like).toHaveAttribute('aria-pressed', 'true'))
+    expect(like).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Dislike' })).toBeDisabled()
+    await user.click(like)
+    expect(setRating).toHaveBeenCalledTimes(1)
+    await act(async () => finish())
+    await waitFor(() => expect(like).toBeEnabled())
+  })
+
+  it('reports a failed save, rolls back the visual vote and lets the user retry', async () => {
+    vi.mocked(setRating).mockRejectedValueOnce(new Error('Write failed'))
+    const user = userEvent.setup()
+    renderButtons(null)
+    const like = await screen.findByRole('button', { name: 'Like' })
+    await user.click(like)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Rating was not saved')
+    expect(like).toHaveAttribute('aria-pressed', 'false')
+    expect(like).toBeEnabled()
+    await user.click(like)
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    expect(setRating).toHaveBeenCalledTimes(2)
   })
 })

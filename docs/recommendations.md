@@ -125,7 +125,7 @@ MoSCoW priority: **M** for the feature MVP, **S** should, **C** could.
 | FR-REC-RT-04 | A title already rated does not appear in *For you* or in similar. It remains in *My ratings*, in the catalog, and in favorites. *Dislike* remains a negative signal for the profile. | M |
 | FR-REC-RT-05 | **My ratings** page: global list of rated titles, *Like* / *Dislike* tabs, search, edit and remove rating. Same cross-cutting presentation as *My list* (`places`). In addition, status relative to the selected source: present in that source (with `removedAt` if any) or absent from that source. | S |
 | FR-REC-RT-06 | JSON export and import. Import updates only titles **already in the database**, recognized by (`tmdbType`, `tmdbId`). It does not create titles. | S |
-| FR-REC-RT-07 | The UI updates the rating immediately (optimistic update) and rolls it back if the request fails. | M |
+| FR-REC-RT-07 | The UI updates the rating immediately (optimistic update). All rating controls for that title are disabled while saving. A failed save restores only that title's previous rating and shows an error. Other pending votes are preserved; shared lists refetch after the last pending vote settles. Recommended cards remain visible while saving, then fade after confirmation. | M |
 | FR-REC-RT-08 | Shortcuts in the dialog: `O` love, `L` like, `D` dislike, `N` not interested, `W` hide. | C |
 | FR-REC-RT-09 | **Teach me your tastes** onboarding: a varied selection of titles **already in enabled catalogs**, to rate quickly (like / dislike / skip). The link from *For you* hides when `N_eff ≥ N0`. | S |
 | FR-REC-RT-10 | The user marks a title as **Hide** (or clears the flag) from the dialog. The flag is global on the title and independent of the rating. | M |
@@ -135,10 +135,10 @@ MoSCoW priority: **M** for the feature MVP, **S** should, **C** could.
 
 | ID | Requirement | Pri |
 |---|---|---|
-| FR-REC-SG-01 | Positive signals **of the profile**: row in `Favorites`; row in `Watched`; `ArrAuditLog` with action `Add`, outcome `Success`, and the profile’s `ProfileId`; `ArrLibraryItem.State = Downloaded` only if it follows an Add by that profile. Weights are in BR-REC-02. The Arr library remains global. | M |
+| FR-REC-SG-01 | Positive signals **of the profile**: row in `Favorites`; row in `Watched`; `ArrAuditLog` with action `Add`, outcome `Success`, and the profile's `ProfileId`; an observed completed download following a successful Add by that profile for the same title and Arr kind, persisted as a successful `Download` audit entry. Live and historical downloads count once per title. Unattributed downloads do not feed other profiles. Weights are in BR-REC-02. The Arr library remains global. | M |
 | FR-REC-SG-02 | If the title has an explicit rating, the profile uses only that rating. | M |
 | FR-REC-SG-03 | The user can disable implicit signals in settings. | S |
-| FR-REC-SG-04 | Deletion from Sonarr/Radarr (`ArrAuditLog` action `Delete`) is not a negative signal. The “added” signal remains. | M |
+| FR-REC-SG-04 | Deletion from Sonarr/Radarr (`ArrAuditLog` action `Delete`) is not a negative signal. Both the added signal and any observed completed-download signal remain, even after files disappear or the library row is removed. | M |
 
 ### 3.3 Recommendations (FR-REC-RC)
 
@@ -358,7 +358,7 @@ MoSCoW priority: **M** for the feature MVP, **S** should, **C** could.
 | Keywords and cast in payload | `TmdbMetadataProvider` (`append_to_response=external_ids,keywords,credits`), `TmdbTitleDetails.Keywords`, `CastJson` (names only) | Keywords today serve stand-up detection and are not saved. Cast has no person id. Extend the mapping; do not open another client. |
 | Average vote and popularity | `Title.VoteTmdb`, `VoteTmdbCount`, `Popularity` | Prior. |
 | Favorites | `Favorite` (`TitleId` PK) | Implicit signal and UI model of optimistic toggle (`FavoriteButton`). |
-| Library | `ArrLibraryItem.State`, `ArrAuditLog` (`Add` / `Delete`, `Success` / `Failed`) | Signals and “in library” filter. |
+| Library | `ArrLibraryItem.State`, `ArrAuditLog` (`Add` / `Download` / `Delete`, `Success` / `Failed`) | Persistent signals and current “in library” filter. |
 | UI source | `pickarr.sourceId.{profileId}` (legacy admin: `pickarr.sourceId`), query `source` on `/catalog` | Same source for `/for-you`. |
 | UI profile | `pickarr.profileId` → header `X-Pickarr-Profile` | Partitions lists, flags, and build. |
 | Card | `TitleListItem` / `TitleListItemDto`, `places`, `TitleCard`, `TitleDialog` | Add the `rating` field. |
@@ -499,9 +499,11 @@ On rebuild:
 - rating: `Ratings` of the `ProfileId`;
 - favorite: `Favorites` of the `ProfileId`;
 - added: `ArrAuditLog` with `Action = Add`, `Outcome = Success`, non-null `TitleId`, and the profile’s `ProfileId` (without `ProfileId` the signal is not attributed);
-- downloaded: `ArrLibraryItem` with `State = Downloaded` and non-null `TitleId`, if the Add attributed to the profile exists.
+- downloaded: live `ArrLibraryItem` with `State = Downloaded` and non-null `TitleId`, if the Add attributed to the profile exists, or a successful `Download` audit entry for that profile and title. The union counts each title once.
 
-A successful `Delete` does not invert the `Add`.
+Sync/refresh records observed completions for profiles with a successful Add for the same title and Arr kind. Cached completions are also recorded before a state downgrade or explicit/external library removal. Entries are idempotent per profile, title, and kind. Already-deleted downloads with no observed completion cannot be reconstructed.
+
+A successful `Delete` does not invert the `Add` or the `Download`. The existing audit schema is reused; no new signal table or migration is needed.
 
 ### 10.4 Migration
 
@@ -996,7 +998,7 @@ There is no separate display language: `CatalogSource.MetadataLanguage` is used.
 | **Property** | Components in [0, 1]. No rated title on the recommendations page. Same input → same order. |
 | **Unit — membership** | Scope `source` keeps titles with `Availability` on that source even if `RemovedAt` is set. Scope `enabled` keeps the union of enabled sources, one row per `Title`. A disabled source does not contribute. A title without `Availability` does not enter. |
 | **Unit — rating** | Second `PUT` replaces the value. `DELETE` removes the row and writes an event with null value. Two sources, same `Title.Id`: one rating. |
-| **Unit — signals** | Favorite, successful `Add`, and `Downloaded` sum and clip to 1. An explicit rating replaces them. `Delete` does not negate the `Add`. |
+| **Unit — signals** | Favorite, successful `Add`, and live/historical downloads sum and clip to 1. An explicit rating replaces them. `Delete` does not negate either Arr signal. |
 | **Unit — import** | Unknown TMDB id → `unknown`, no new `Titles` row. |
 | **Integration** | `WebApplicationFactory`: rating → rebuild → `GET /recommendations` for both scopes. Title on Netflix IT and Prime Video: once in scope `enabled`, with two places; in Netflix IT scope once, and the like given “from the other side” is the same `rating`. Similar: a neighbor only on Prime Video is returned. |
 | **Model** | Conditional test, skipped if the file is missing: reference phrases, cosine ≥ 0.99; same text → same vector. |

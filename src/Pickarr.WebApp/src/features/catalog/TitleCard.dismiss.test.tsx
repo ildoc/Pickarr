@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TitleListItem } from '../../api/types'
 import i18n from '../../i18n'
-import { RECO_DISMISS_HOLD_MS } from '../ratings/ratingCache'
+import { RECO_DISMISS_HOLD_MS, RECO_DISMISS_TOTAL_MS } from '../ratings/ratingCache'
 import { TitleCard } from './TitleCard'
 
 vi.mock('../../api/settings', () => ({
@@ -56,7 +56,7 @@ function renderCard() {
       </I18nextProvider>
     </QueryClientProvider>
   )
-  return render(ui)
+  return { ...render(ui), client }
 }
 
 describe('TitleCard dismissOnRate', () => {
@@ -86,6 +86,33 @@ describe('TitleCard dismissOnRate', () => {
 
     expect(card().className).toContain('opacity-0')
     expect(card().getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('does not fade an optimistic vote until a slow save has completed', async () => {
+    const { container, client } = renderCard()
+    let finish!: () => void
+    const write = new Promise<void>((resolve) => { finish = resolve })
+    const mutation = client.getMutationCache().build(client, {
+      mutationKey: ['rating', 7],
+      mutationFn: () => write,
+    })
+    await act(async () => {
+      void mutation.execute('like')
+      screen.getByRole('button', { name: 'rate' }).click()
+      await vi.advanceTimersByTimeAsync(RECO_DISMISS_TOTAL_MS * 2)
+    })
+    const card = container.querySelector('a')!
+    expect(card.className).toContain('opacity-100')
+    expect(card.getAttribute('aria-hidden')).toBeNull()
+
+    await act(async () => {
+      finish()
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RECO_DISMISS_HOLD_MS)
+    })
+    expect(card.className).toContain('opacity-0')
   })
 })
 

@@ -155,6 +155,38 @@ public sealed class ArrAddDeleteTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Add_records_a_download_already_complete_in_the_Arr_response()
+    {
+        MapJson("/api/v3/series", "[]");
+        MapFixture("/api/v3/series/lookup", "sonarr/series-lookup.json");
+        var statistics = new { episodeFileCount = 8, episodeCount = 8, totalEpisodeCount = 8, sizeOnDisk = 100 };
+        _server.Given(Request.Create().WithPath("/api/v3/series").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(201).WithHeader("Content-Type", "application/json")
+                .WithBody(JsonSerializer.Serialize(new
+                {
+                    id = 77, title = "Example Series", tvdbId = 121361, tmdbId = 1396, monitored = true,
+                    statistics,
+                    seasons = new[] { new { seasonNumber = 1, monitored = true, statistics } },
+                })));
+        await using var db = await CreateDbAsync();
+        var title = await SeedSeriesAsync(db);
+        var profile = new Profile { Name = "Owner", Color = Profile.DefaultColor, CreatedAt = DateTime.UtcNow };
+        db.Profiles.Add(profile);
+        await db.SaveChangesAsync();
+        var services = CreateServices(db, CreateSettings(sonarr: true));
+
+        var result = await services.Add.AddAsync(title.Id, new SonarrAddOptions(
+            QualityProfileId: 1, RootFolderPath: "/tv", Monitor: "all", MonitorNewItems: "all",
+            SeriesType: "standard", SeasonFolder: true, Tags: [], SearchNow: true), profileId: profile.Id);
+
+        result.State.ShouldBe("downloaded");
+        var completion = await db.ArrAuditLogs.SingleAsync(a => a.Action == ArrAuditActions.Download);
+        completion.ProfileId.ShouldBe(profile.Id);
+        completion.TitleId.ShouldBe(title.Id);
+        completion.ArrId.ShouldBe(77);
+    }
+
+    [Fact]
     public async Task ArrAddService_already_exists_returns_conflict_and_refreshes_cache()
     {
         MapFixture("/api/v3/series", "sonarr/series-library.json"); // find returns id 55
