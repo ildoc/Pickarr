@@ -92,6 +92,8 @@ Do not print Watchmode, TMDB, Sonarr, or Radarr secrets. They are stored encrypt
 
 GitHub Actions (`.github/workflows/ci.yml`) runs backend/frontend lint and tests, then builds the Docker image. Push to GHCR happens from the default branch (`edge`, `X.Y.Z.N`) and from SemVer tags (`X.Y.Z`, `latest`). Platform: linux/amd64.
 
+Push a Git tag `vX.Y.Z` (or `X.Y.Z`) to publish a release. After checks and the image push succeed, CI creates a GitHub release titled `X.Y.Z` with generated release notes, linked to the original tag. Rerunning the workflow reuses the release and preserves its notes. Subsequent default-branch builds publish `X.Y.Z.N` and `edge`, where `N` is the number of commits after the release tag; rerunning the same commit keeps the same version. Before the first tag, builds use `0.0.0.N`.
+
 ## Next steps
 
 - [Architecture](architecture.md)

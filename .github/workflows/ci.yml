@@ -3,6 +3,7 @@
 # branch and from tags. A tag vX.Y.Z (or X.Y.Z) sets the version to X.Y.Z and
 # is published as X.Y.Z and latest. Later builds use X.Y.Z.N, where N is the
 # number of commits after that tag, and the default branch is also tagged edge.
+# After the release image is pushed, a GitHub release named X.Y.Z is published.
 name: CI
 
 on:
@@ -157,6 +158,9 @@ jobs:
     needs: [backend-lint, frontend-lint, backend-test, frontend-test]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
     permissions:
       contents: read
       packages: write
@@ -280,3 +284,32 @@ jobs:
           cache-to: type=gha,mode=max,ignore-error=true
           provenance: true
           sbom: true
+
+  release:
+    name: Release
+    needs: image
+    if: >-
+      needs.image.outputs.release == 'true' &&
+      github.ref_type == 'tag' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.image.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          release_tags="$(gh api --paginate "repos/${GH_REPO}/releases" --jq '.[].tag_name')"
+          if grep -Fxq -- "$RELEASE_TAG" <<< "$release_tags"; then
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_VERSION"
+          else
+            gh release create "$RELEASE_TAG" --verify-tag \
+              --title "$RELEASE_VERSION" --generate-notes
+          fi

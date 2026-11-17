@@ -12,6 +12,8 @@ Published images are **linux/amd64** on GitHub Container Registry. For this repo
 | `X.Y.Z.N` | Default branch build (`N` commits after the latest release tag) |
 | `X.Y.Z`, `latest` | Git tag `vX.Y.Z` / `X.Y.Z` |
 
+Each release is named `X.Y.Z` on GitHub (without the tag's optional `v`) and is published only after its image is available. Development builds update `edge`, not `latest`; rebuilding the same commit keeps the same `X.Y.Z.N` version.
+
 The process runs as non-root user `app` (uid **1654**). A new named volume inherits ownership from the image. A host directory you create must be writable by uid 1654.
 
 ## Compose
