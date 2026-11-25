@@ -11,6 +11,27 @@ public sealed class DetailCastMigrationTests
     private const string SchemaBeforeDetailCast = "20261110105718_AddTitleTmdbRecommendations";
 
     [Fact]
+    public async Task Arr_slug_migration_preserves_existing_library_rows()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<PickarrDbContext>().UseSqlite(connection).Options;
+        await using var db = new PickarrDbContext(options);
+        await db.Database.MigrateAsync("20261125082232_AddCastFetchAttemptAt");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO "ArrLibraryItems" ("Kind", "ArrId", "ArrTitle", "Monitored", "State", "SizeOnDisk", "SyncedAt")
+            VALUES ('Radarr', 10, 'Existing movie', 1, 'Downloaded', 123, '2026-11-25');
+            """);
+
+        await db.Database.MigrateAsync();
+        var item = await db.ArrLibraryItems.SingleAsync();
+        item.ArrTitle.ShouldBe("Existing movie");
+        item.SizeOnDisk.ShouldBe(123);
+        item.TitleSlug.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task Migration_preserves_existing_credits_and_supports_shared_ordered_cast()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");

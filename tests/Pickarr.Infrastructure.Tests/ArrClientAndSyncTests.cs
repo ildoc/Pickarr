@@ -87,6 +87,7 @@ public sealed class ArrClientAndSyncTests : IAsyncLifetime
         info.Version.ShouldContain("4.");
         var library = await client.GetLibraryAsync();
         library.Count.ShouldBe(2);
+        library[0].TitleSlug.ShouldBe("example-series");
         library[0].Seasons.Count.ShouldBe(3);
         var queue = await client.GetQueueAsync();
         queue.ShouldContain(q => q.ArrItemId == 55);
@@ -128,6 +129,7 @@ public sealed class ArrClientAndSyncTests : IAsyncLifetime
         (await db.ArrLibraryItems.CountAsync()).ShouldBe(2);
         var matched = await db.ArrLibraryItems.SingleAsync(a => a.ArrId == 55);
         matched.TitleId.ShouldNotBeNull();
+        matched.TitleSlug.ShouldBe("example-series");
         matched.State.ShouldBe(ArrStates.Downloading);
 
         _server.Reset();
@@ -137,6 +139,17 @@ public sealed class ArrClientAndSyncTests : IAsyncLifetime
 
         await Should.ThrowAsync<ArrClientException>(() => sync.SyncAsync(ArrKind.Sonarr));
         (await db.ArrLibraryItems.CountAsync()).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task RadarrClient_parses_title_slug()
+    {
+        MapFixture("/api/v3/movie", "radarr/movie-library.json");
+        var client = new RadarrClient(new HttpClient(), CreateSettings(sonarr: false, radarr: true), NullLogger<RadarrClient>.Instance);
+
+        var library = await client.GetLibraryAsync();
+
+        library[0].TitleSlug.ShouldBe("the-matrix-1999");
     }
 
     [Theory]
@@ -186,10 +199,11 @@ public sealed class ArrClientAndSyncTests : IAsyncLifetime
         var sync = new ArrLibrarySync(db, factory, new SystemClock(),
             new EfSyncRunStore(db, new SystemClock(), new TestSettingsStore()), NullLogger<ArrLibrarySync>.Instance);
         var item = new ArrItemSnapshot(10, "Downloaded", 2020, 603, null, null, true, null, 100,
-            true, true, 8, 8, 8, [new ArrSeasonSnapshot(1, true, 8, 8, 8, 100)]);
+            true, true, 8, 8, 8, [new ArrSeasonSnapshot(1, true, 8, 8, 8, 100)], "downloaded");
 
         await sync.UpsertItemAsync(kind, item);
         await sync.UpsertItemAsync(kind, item);
+        (await db.ArrLibraryItems.SingleAsync()).TitleSlug.ShouldBe("downloaded");
         var download = await db.ArrAuditLogs.SingleAsync(a => a.Action == ArrAuditActions.Download);
         download.ProfileId.ShouldBe(owner.Id);
         download.TitleId.ShouldBe(title.Id);

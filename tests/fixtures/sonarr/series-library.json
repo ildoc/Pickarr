@@ -2,6 +2,7 @@
   {
     "id": 55,
     "title": "Example Series",
+    "titleSlug": "example-series",
     "year": 2018,
     "tvdbId": 121361,
     "tmdbId": 1396,

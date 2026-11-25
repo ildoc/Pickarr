@@ -217,7 +217,8 @@ public sealed class RadarrClient(
             EpisodeFileCount: null,
             EpisodeCount: null,
             TotalEpisodeCount: null,
-            Seasons: []);
+            Seasons: [],
+            TitleSlug: m.TitleSlug);
 
     private sealed record StatusDto(string? Version, string? AppName);
     private sealed record QualityProfileDto(int Id, string? Name);
@@ -234,7 +235,8 @@ public sealed class RadarrClient(
         bool Monitored,
         bool HasFile,
         bool IsAvailable,
-        long SizeOnDisk);
+        long SizeOnDisk,
+        string? TitleSlug);
     private sealed record QueuePageDto(int Page, int PageSize, int TotalRecords, List<QueueRecordDto>? Records);
     private sealed record QueueRecordDto(
         int? MovieId,

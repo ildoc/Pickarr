@@ -370,7 +370,8 @@ public sealed class SonarrClient(
             s.Statistics?.EpisodeFileCount,
             s.Statistics?.EpisodeCount,
             s.Statistics?.TotalEpisodeCount,
-            seasons);
+            seasons,
+            s.TitleSlug);
     }
 
     private sealed record StatusDto(string? Version, string? AppName);
@@ -388,7 +389,8 @@ public sealed class SonarrClient(
         string? Path,
         bool Monitored,
         SeriesStatsDto? Statistics,
-        List<SeasonDto>? Seasons);
+        List<SeasonDto>? Seasons,
+        string? TitleSlug);
     private sealed record SeriesStatsDto(int EpisodeFileCount, int EpisodeCount, int TotalEpisodeCount, long SizeOnDisk);
     private sealed record SeasonDto(int SeasonNumber, bool Monitored, SeriesStatsDto? Statistics);
     private sealed record QueuePageDto(int Page, int PageSize, int TotalRecords, List<QueueRecordDto>? Records);

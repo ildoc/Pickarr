@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { SyntheticEvent } from 'react'
+import type { ReactNode, SyntheticEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { RatingValue } from '../../api/ratings'
 import { fetchSettings } from '../../api/settings'
@@ -30,11 +30,13 @@ export function RatingButtons({
   rating,
   variant = 'compact',
   className = '',
+  children,
 }: {
   titleId: number
   rating: UserRating
   variant?: 'compact' | 'dialog'
   className?: string
+  children?: ReactNode
 }) {
   const { t } = useTranslation()
   const settings = useQuery({ queryKey: ['settings'], queryFn: fetchSettings })
@@ -42,7 +44,7 @@ export function RatingButtons({
   const displayedRating = mutation.pendingRating === undefined ? rating : mutation.pendingRating
 
   if (settings.data && !settings.data.reco.enabled) {
-    return null
+    return <>{children}</>
   }
 
   const toggle = (value: RatingValue) => {
@@ -77,6 +79,7 @@ export function RatingButtons({
             {label}
           </button>
         ))}
+        {children}
         {mutation.isError && <span role="alert" className="text-xs text-rose-400">{t('ratings.saveFailed')}</span>}
       </div>
     )

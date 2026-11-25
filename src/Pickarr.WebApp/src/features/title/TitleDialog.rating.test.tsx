@@ -6,6 +6,7 @@ import { I18nextProvider } from 'react-i18next'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchTitle } from '../../api/catalog'
+import { setTitleSeasonMonitoring } from '../../api/arr'
 import { setRating } from '../../api/ratings'
 import { fetchSettings } from '../../api/settings'
 import type { TitleDetail } from '../../api/types'
@@ -15,6 +16,12 @@ import { TitleDialog } from './TitleDialog'
 
 vi.mock('../../api/catalog', () => ({
   fetchTitle: vi.fn(),
+  fetchSeriesSeasons: vi.fn(async () => []),
+}))
+
+vi.mock('../../api/arr', () => ({
+  refreshTitleArr: vi.fn(async () => undefined),
+  setTitleSeasonMonitoring: vi.fn(async () => undefined),
 }))
 
 vi.mock('../../api/ratings', () => ({
@@ -80,12 +87,12 @@ describe('TitleDialog ratings', () => {
       posterUrl: null,
       backdropUrl: null,
       ratings: { tmdb: null, tmdbVotes: null },
-      links: { tmdb: null, imdb: null, tvdb: null },
+      links: { tmdb: 'https://example.com/tmdb', imdb: 'https://example.com/imdb', tvdb: 'https://example.com/tvdb' },
       isFavorite: false,
       isWatched: false,
       rating: null,
       metadataStatus: 'ready',
-      availability: [],
+      availability: [{ sourceId: 1, countryCode: 'IT', addedAt: null, removedAt: null, leavingDate: null }],
       arr: {
         kind: 'radarr',
         arrId: null,
@@ -149,7 +156,7 @@ describe('TitleDialog ratings', () => {
         fileCount: 1,
         syncedAt: '2026-11-25T08:00:00Z',
         seasons: null,
-        externalUrl: null,
+        externalUrl: 'http://radarr/base/movie/dialog-movie',
       },
     } as TitleDetail)
 
@@ -159,6 +166,49 @@ describe('TitleDialog ratings', () => {
     const library = await screen.findByRole('heading', { name: 'Library' })
     expect(actions.compareDocumentPosition(library) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByText('Genres: Drama')).toBeTruthy()
+    const open = screen.getByRole('link', { name: 'Open in Radarr' })
+    expect(open).toHaveAttribute('href', 'http://radarr/base/movie/dialog-movie')
+    expect(open).toHaveAttribute('target', '_blank')
+    expect(screen.getByRole('button', { name: 'Remove from library' }).parentElement).toContainElement(open)
+  })
+
+  it('keeps availability and external links in the poster column', async () => {
+    renderDialog()
+
+    await screen.findByRole('heading', { name: 'Dialog Movie' })
+    const column = screen.getByRole('heading', { name: 'Availability' }).parentElement?.parentElement
+    expect(column).toContainElement(screen.getByText(/IT: Available/))
+    for (const name of ['TMDB', 'IMDb', 'TVDB']) {
+      expect(column).toContainElement(screen.getByRole('link', { name }))
+    }
+  })
+
+  it('collapses library season details without hiding monitoring or the Sonarr link', async () => {
+    const base = await vi.mocked(fetchTitle)(42)
+    vi.mocked(fetchTitle).mockResolvedValue({
+      ...base,
+      category: 'series',
+      arr: {
+        ...base.arr,
+        kind: 'sonarr',
+        arrId: 55,
+        state: 'downloaded',
+        canDelete: true,
+        addBlockedReason: 'alreadyInLibrary',
+        externalUrl: 'http://sonarr/series/example',
+        seasons: [{ number: 1, monitored: true, state: 'downloaded', episodeFileCount: 8, episodeCount: 8, totalEpisodeCount: 8 }],
+      },
+    })
+    const user = userEvent.setup()
+    renderDialog()
+
+    const disclosure = await screen.findByText('Season details')
+    expect(disclosure.parentElement).not.toHaveAttribute('open')
+    expect(screen.getByRole('link', { name: 'Open in Sonarr' })).toHaveAttribute('target', '_blank')
+    await user.click(disclosure)
+    expect(disclosure.parentElement).toHaveAttribute('open')
+    await user.click(screen.getByRole('button', { name: 'Stop monitoring 1' }))
+    await waitFor(() => expect(setTitleSeasonMonitoring).toHaveBeenCalledWith(42, 1, false))
   })
 
   it('renders ordered cast members with placeholders and conditional IMDb links', async () => {
@@ -213,6 +263,7 @@ describe('TitleDialog ratings', () => {
     renderDialog()
 
     const cast = await screen.findByRole('list', { name: 'Cast' })
+    expect(cast).toHaveClass('overflow-x-auto', 'max-w-full')
     expect(cast.querySelectorAll('[role="listitem"]')).toHaveLength(2)
     expect(screen.getByAltText('Actor One')).toBeTruthy()
     expect(screen.getByText('Actor Two')).toBeTruthy()

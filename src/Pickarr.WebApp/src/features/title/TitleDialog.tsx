@@ -187,8 +187,8 @@ export function TitleDialog({
               {t('title.close')}
             </button>
           </div>
-          <div className="grid gap-6 p-6 md:grid-cols-[180px_1fr]">
-            <div>
+          <div className="grid min-w-0 gap-6 p-6 md:grid-cols-[180px_minmax(0,1fr)]">
+            <div className="min-w-0 space-y-4">
               {detail.data.posterUrl ? (
                 <img
                   src={detail.data.posterUrl}
@@ -198,10 +198,43 @@ export function TitleDialog({
               ) : (
                 <div className="aspect-[2/3] rounded-lg bg-white/5" />
               )}
+              <section>
+                <h3 className="mb-1 text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
+                  {t('title.availability')}
+                </h3>
+                <ul className="space-y-1 text-sm">
+                  {detail.data.availability.map((a) => (
+                    <li key={a.sourceId}>
+                      {a.countryCode}:{' '}
+                      {a.removedAt
+                        ? t('title.removedOn', { date: formatDate(a.removedAt, i18n.language) })
+                        : a.addedAt
+                          ? t('title.availableFrom', {
+                              date: formatDate(a.addedAt, i18n.language),
+                            })
+                          : t('title.availableNow')}
+                      {a.leavingDate
+                        ? ` · ${t('title.leavingOn', { date: a.leavingDate })}`
+                        : ''}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              <section className="flex flex-wrap gap-3 text-sm">
+                {detail.data.links.tmdb && (
+                  <a className="underline" href={detail.data.links.tmdb} target="_blank" rel="noreferrer">TMDB</a>
+                )}
+                {detail.data.links.imdb && (
+                  <a className="underline" href={detail.data.links.imdb} target="_blank" rel="noreferrer">IMDb</a>
+                )}
+                {detail.data.links.tvdb && (
+                  <a className="underline" href={detail.data.links.tvdb} target="_blank" rel="noreferrer">TVDB</a>
+                )}
+              </section>
             </div>
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
+            <div className="min-w-0 space-y-4">
+              <div className="space-y-3">
+                <div className="min-w-0">
                   <h2 className="text-3xl font-semibold tracking-tight">{detail.data.name}</h2>
                   <p className="mt-1 text-[var(--muted)]">
                     {formatYear(detail.data.year)} · {t(categoryLabelKey(detail.data.category))}
@@ -219,41 +252,28 @@ export function TitleDialog({
                       </p>
                     )}
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <RatingButtons
-                    titleId={detail.data.id}
-                    rating={detail.data.rating ?? null}
-                    variant="dialog"
-                  />
-                  <WatchedButton
-                    titleId={detail.data.id}
-                    isWatched={detail.data.isWatched ?? false}
-                    variant="dialog"
-                  />
-                  <FavoriteButton
-                    titleId={detail.data.id}
-                    isFavorite={detail.data.isFavorite}
-                  />
+                <div className="flex flex-wrap items-center gap-2">
+                  <RatingButtons titleId={detail.data.id} rating={detail.data.rating ?? null} variant="dialog">
+                    <WatchedButton
+                      titleId={detail.data.id}
+                      isWatched={detail.data.isWatched ?? false}
+                      variant="dialog"
+                    />
+                    <FavoriteButton
+                      titleId={detail.data.id}
+                      isFavorite={detail.data.isFavorite}
+                    />
+                  </RatingButtons>
                 </div>
               </div>
 
               {detail.data.arr.addBlockedReason !== 'notConfigured' && (
                 <>
-                  <section className="space-y-3 rounded-lg border border-white/10 bg-[var(--surface-2)] p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
+                  <section className="space-y-2 rounded-lg border border-white/10 bg-[var(--surface-2)] p-3">
+                    <div className="flex flex-wrap items-center gap-3">
                       <h3 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
                         {t('title.library')}
                       </h3>
-                      <button
-                        type="button"
-                        onClick={() => refresh.mutate()}
-                        disabled={refresh.isPending}
-                        className="rounded-md bg-white/10 px-2.5 py-1 text-xs hover:bg-white/15 disabled:opacity-50"
-                      >
-                        {t('title.refreshStatus')}
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
                       <ArrStatusBadge state={detail.data.arr.state} progress={detail.data.arr.progress} />
                       {detail.data.arr.monitored != null && (
                         <span className="text-sm text-[var(--muted)]">
@@ -267,9 +287,23 @@ export function TitleDialog({
                           })}
                         </span>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => refresh.mutate()}
+                        disabled={refresh.isPending}
+                        className="rounded-md bg-white/10 px-2.5 py-1 text-xs hover:bg-white/15 disabled:opacity-50"
+                      >
+                        {t('title.refreshStatus')}
+                      </button>
                     </div>
+                    {refresh.isError && (
+                      <p role="alert" className="text-sm text-red-300">
+                        {refresh.error instanceof Error ? refresh.error.message : t('arr.refreshFailed')}
+                      </p>
+                    )}
                     {detail.data.arr.seasons && detail.data.arr.seasons.length > 0 && (
-                      <>
+                      <details>
+                        <summary className="cursor-pointer text-sm">{t('title.librarySeasons')}</summary>
                         <SeasonTable
                           seasons={detail.data.arr.seasons}
                           pendingSeason={seasonMonitoring.isPending
@@ -286,7 +320,7 @@ export function TitleDialog({
                               : t('arr.updateMonitoringFailed')}
                           </p>
                         )}
-                      </>
+                      </details>
                     )}
                     <div className="flex flex-wrap gap-2">
                       {detail.data.arr.canAdd && (
@@ -308,6 +342,18 @@ export function TitleDialog({
                         >
                           {t('arr.canDelete')}
                         </button>
+                      )}
+                      {detail.data.arr.canDelete && detail.data.arr.externalUrl && (
+                        <a
+                          href={detail.data.arr.externalUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-md bg-white/10 px-3 py-1.5 text-sm hover:bg-white/15"
+                        >
+                          {t('arr.openIn', {
+                            kind: detail.data.arr.kind === 'radarr' ? 'Radarr' : 'Sonarr',
+                          })}
+                        </a>
                       )}
                       {detail.data.arr.addBlockedReason === 'missingTvdbId' && (
                         <span className="text-sm text-[var(--muted)]">{t('arr.missingTvdbId')}</span>
@@ -346,7 +392,7 @@ export function TitleDialog({
               )}
 
               {castMembers.length > 0 && (
-                <section aria-labelledby="title-dialog-cast">
+                <section aria-labelledby="title-dialog-cast" className="min-w-0">
                   <h3
                     id="title-dialog-cast"
                     className="mb-2 text-sm font-medium uppercase tracking-wide text-[var(--muted)]"
@@ -354,7 +400,7 @@ export function TitleDialog({
                     {t('title.cast')}
                   </h3>
                   <div
-                    className="flex gap-3 overflow-x-auto pb-1"
+                    className="flex max-w-full gap-3 overflow-x-auto pb-1"
                     role="list"
                     aria-label={t('title.cast')}
                   >
@@ -383,7 +429,7 @@ export function TitleDialog({
                         <div
                           key={member.name}
                           role="listitem"
-                          className="flex min-w-24 flex-col items-center gap-1"
+                          className="flex w-24 shrink-0 flex-col items-center gap-1"
                         >
                           {member.imdbUrl ? (
                             <a
@@ -418,46 +464,6 @@ export function TitleDialog({
                 </section>
               )}
 
-              <section>
-                <h3 className="mb-1 text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
-                  {t('title.availability')}
-                </h3>
-                <ul className="space-y-1 text-sm">
-                  {detail.data.availability.map((a) => (
-                    <li key={a.sourceId}>
-                      {a.countryCode}:{' '}
-                      {a.removedAt
-                        ? t('title.removedOn', { date: formatDate(a.removedAt, i18n.language) })
-                        : a.addedAt
-                          ? t('title.availableFrom', {
-                              date: formatDate(a.addedAt, i18n.language),
-                            })
-                          : t('title.availableNow')}
-                      {a.leavingDate
-                        ? ` · ${t('title.leavingOn', { date: a.leavingDate })}`
-                        : ''}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-
-              <section className="flex flex-wrap gap-3 text-sm">
-                {detail.data.links.tmdb && (
-                  <a className="underline" href={detail.data.links.tmdb} target="_blank" rel="noreferrer">
-                    TMDB
-                  </a>
-                )}
-                {detail.data.links.imdb && (
-                  <a className="underline" href={detail.data.links.imdb} target="_blank" rel="noreferrer">
-                    IMDb
-                  </a>
-                )}
-                {detail.data.links.tvdb && (
-                  <a className="underline" href={detail.data.links.tvdb} target="_blank" rel="noreferrer">
-                    TVDB
-                  </a>
-                )}
-              </section>
             </div>
           </div>
           <SimilarRow titleId={detail.data.id} sourceId={sourceId} />

@@ -48,6 +48,29 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task Detail_links_to_cached_arr_slug_and_preserves_url_base()
+    {
+        await using var db = await CreateDbAsync();
+        var source = await SeedCatalogAsync(db);
+        var titles = await SeedTitlesAsync(db, source.Id);
+        var settings = await ConfigureArrAsync(sonarr: true, radarr: true);
+        await settings.SetAsync(SettingsKeys.SonarrUrl, JsonSerializer.Serialize("http://sonarr/base/"), false);
+        await settings.SetAsync(SettingsKeys.RadarrUrl, JsonSerializer.Serialize("http://radarr/base/"), false);
+        db.ArrLibraryItems.AddRange(
+            new ArrLibraryItem { TitleId = titles.Series.Id, Kind = ArrKinds.Sonarr, ArrId = 55, ArrTitle = "Series", TitleSlug = "series-slug", State = ArrStates.Downloaded },
+            new ArrLibraryItem { TitleId = titles.Movie.Id, Kind = ArrKinds.Radarr, ArrId = 10, ArrTitle = "Movie", TitleSlug = "movie-slug", State = ArrStates.Downloaded });
+        await db.SaveChangesAsync();
+        var sut = new TitleQueryService(db, settings, new FixedClock(DateTime.UtcNow));
+
+        (await sut.GetTitleAsync(titles.Series.Id, source.Id))!.Arr.ExternalUrl.ShouldBe("http://sonarr/base/series/series-slug");
+        (await sut.GetTitleAsync(titles.Movie.Id, source.Id))!.Arr.ExternalUrl.ShouldBe("http://radarr/base/movie/movie-slug");
+        var item = await db.ArrLibraryItems.SingleAsync(x => x.TitleId == titles.Movie.Id);
+        item.TitleSlug = null;
+        await db.SaveChangesAsync();
+        (await sut.GetTitleAsync(titles.Movie.Id, source.Id))!.Arr.ExternalUrl.ShouldBeNull();
+    }
+
+    [Fact]
     public async Task Query_without_Arr_still_returns_titles_for_browse()
     {
         await using var db = await CreateDbAsync();

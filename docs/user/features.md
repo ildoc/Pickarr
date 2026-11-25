@@ -32,9 +32,10 @@ Type and genre options come from titles in the current scope. Sonarr and Radarr 
 Opening a title keeps you on the route that opened it. The detail dialog shows:
 
 - Metadata (overview, genres, scores, external links)
-- Up to 12 cast members in stable order, with TMDB photos or accessible placeholders and IMDb links when available
+- Up to 12 cast members in a horizontally scrollable row, with TMDB photos or accessible placeholders and IMDb links when available
 - Availability on the current source (added / leaving / removed)
-- Shared Arr library status (monitor, download progress, seasons for series)
+- Compact shared Arr library status (monitor and download progress), with expandable library season details for series
+- Open an existing library title in Sonarr or Radarr in a new tab when its title slug is available. Existing entries acquire their slug at the next library sync or status refresh; the configured Arr URL must be reachable from your browser.
 - Actions: favorite, rate, Add / Delete, Search now, Refresh status
 - When recommendations are enabled, select **Show similar titles** to start a search. A spinner shows that the search is running; opening a title does not start it automatically.
 - Series seasons are newest first; episodes oldest first. Adding a series sends only selected seasons.

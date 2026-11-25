@@ -230,6 +230,8 @@
     "unknown": "Unknown",
     "canAdd": "Add to {{kind}}",
     "canDelete": "Remove from library",
+    "openIn": "Open in {{kind}}",
+    "refreshFailed": "Could not refresh library status.",
     "notConfigured": "Arr instance not configured — open Settings.",
     "unreachable": "Arr instance is configured but not reachable.",
     "confirmAdd": "Add",
@@ -389,6 +391,7 @@
     "external": "External links",
     "notFound": "Title not found",
     "refreshStatus": "Refresh status",
+    "librarySeasons": "Season details",
     "syncedAt": "Last sync {{date}}"
   },
   "settings": {

@@ -2,6 +2,7 @@
   {
     "id": 10,
     "title": "The Matrix",
+    "titleSlug": "the-matrix-1999",
     "year": 1999,
     "tmdbId": 603,
     "imdbId": "tt0133093",

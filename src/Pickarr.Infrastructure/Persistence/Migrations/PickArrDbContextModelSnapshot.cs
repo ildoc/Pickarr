@@ -190,6 +190,9 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
                     b.Property<int?>("TitleId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("TitleSlug")
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("TmdbId")
                         .HasColumnType("INTEGER");
 

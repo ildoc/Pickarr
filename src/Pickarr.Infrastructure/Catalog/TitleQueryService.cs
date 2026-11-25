@@ -476,7 +476,10 @@ public sealed class TitleQueryService(
             .FirstOrDefaultAsync(
                 a => a.TitleId == title.Id && a.Kind == expectedArrKind,
                 cancellationToken);
-        var arr = BuildArrDetail(title, arrItem, sonarr, radarr);
+        var arrUrl = arrItem is null ? null : await GetStringSettingAsync(
+            expectedArrKind == ArrKinds.Sonarr ? SettingsKeys.SonarrUrl : SettingsKeys.RadarrUrl,
+            cancellationToken);
+        var arr = BuildArrDetail(title, arrItem, sonarr, radarr, arrUrl);
         var personal = PersonalFlags(title, personalProfileId);
 
         return new TitleDetailDto(
@@ -706,7 +709,8 @@ public sealed class TitleQueryService(
         Title title,
         ArrLibraryItem? arrItem,
         bool sonarrConfigured,
-        bool radarrConfigured)
+        bool radarrConfigured,
+        string? arrUrl)
     {
         var isSeries = title.MediaType == MediaTypes.Series;
         var kind = isSeries ? "sonarr" : "radarr";
@@ -739,7 +743,9 @@ public sealed class TitleQueryService(
                 CanAdd: false,
                 CanDelete: true,
                 AddBlockedReason: "alreadyInLibrary",
-                ExternalUrl: null);
+                ExternalUrl: configured && !string.IsNullOrWhiteSpace(arrUrl) && !string.IsNullOrWhiteSpace(arrItem.TitleSlug)
+                    ? $"{arrUrl.Trim().TrimEnd('/')}/{(isSeries ? "series" : "movie")}/{Uri.EscapeDataString(arrItem.TitleSlug)}"
+                    : null);
         }
 
         string? blocked = null;

@@ -49,7 +49,8 @@ public sealed record ArrItemSnapshot(
     int? EpisodeFileCount,
     int? EpisodeCount,
     int? TotalEpisodeCount,
-    IReadOnlyList<ArrSeasonSnapshot> Seasons);
+    IReadOnlyList<ArrSeasonSnapshot> Seasons,
+    string? TitleSlug = null);
 
 public sealed record ArrQueueEntry(
     int ArrItemId,

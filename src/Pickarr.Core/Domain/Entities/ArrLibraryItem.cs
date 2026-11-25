@@ -10,6 +10,7 @@ public sealed class ArrLibraryItem
     public string? ImdbId { get; set; }
     public int? TitleId { get; set; }
     public required string ArrTitle { get; set; }
+    public string? TitleSlug { get; set; }
     public int? Year { get; set; }
     public bool Monitored { get; set; }
     public required string State { get; set; }

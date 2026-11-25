@@ -86,6 +86,7 @@ public sealed class ArrLibrarySync(
                 entity.TvdbId = item.TvdbId;
                 entity.ImdbId = item.ImdbId;
                 entity.ArrTitle = item.Title;
+                entity.TitleSlug = item.TitleSlug;
                 entity.Year = item.Year;
                 entity.Monitored = item.Monitored;
                 entity.State = state.ToString();
@@ -179,6 +180,7 @@ public sealed class ArrLibrarySync(
         entity.TvdbId = item.TvdbId;
         entity.ImdbId = item.ImdbId;
         entity.ArrTitle = item.Title;
+        entity.TitleSlug = item.TitleSlug;
         entity.Year = item.Year;
         entity.Monitored = item.Monitored;
         entity.State = state.ToString();
