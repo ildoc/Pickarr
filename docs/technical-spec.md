@@ -1079,7 +1079,7 @@ Active profile in `localStorage` `pickarr.profileId`; the client sends it as `X-
 
 - **Server data:** TanStack Query. Hierarchical keys: `['titles', sourceId, filters]`, `['title', id, sourceId]`, `['arr-options', kind]`, `['settings']`, `['admin', …]`.
 - **Filters/search:** source of truth = URL (`useSearchParams`); search field has 300 ms debounce.
-- **Grid:** `useInfiniteQuery` + `@tanstack/react-virtual`. Virtualized rows are computed from container width (2:3 cards). `placeholderData: keepPreviousData` to avoid flicker on filter change.
+- **Grid:** `useInfiniteQuery`. `TitleGrid` windows poster rows from the container width (2:3 cards, minimum 180px) and mounts only the rows near the viewport. Repeated title ids in the concatenated pages are shown once. `placeholderData: keepPreviousData` avoids flicker on filter change. The catalog and For you pages show **Top** after scrolling.
 - **Favorites:** mutation with optimistic update on `titles` and `title`, rollback on error.
 - **Ratings:** `RatingButtons` with `onMutate` and a shared per-title pending key. Card, dialog, and keyboard cannot send overlapping votes for the same title while saving; the selected vote is highlighted immediately. Rollback restores only that title's rating and shows an error. Shared-list invalidation waits for the final pending rating mutation and includes `titles`/all `title` details/`recommendations`/`ratings`/`similar`/status. Recommended cards remain visible while saving before the saved-vote dismiss animation.
 - **Library state:** 30 s `refetchInterval` for the open card and `refetchOnWindowFocus` for the grid; after add/delete invalidate `['title', id]` and `['titles']`. If SSE is active, events invalidate the same keys and polling stops.

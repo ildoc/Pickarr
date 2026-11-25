@@ -696,7 +696,7 @@ The JSON holds keys and ids, not translated phrases.
 MMR(t) = λ · Score(t) − (1 − λ) · max_{u already chosen} sim(t, u)     λ = 0.7
 ```
 
-`sim` is the embedding cosine, or the sparse one. The first-page list is kept in memory for the filter combination, with a cursor for later pages.
+`sim` is the embedding cosine, or the sparse one. The diversified order for one filter combination (version, scope, filters, and current eligibility) is kept in memory for about two minutes. Later pages slice that order, so they do not re-run MMR or exploration and they do not repeat a title already placed on an earlier page. A new vote, hide, or rebuild changes eligibility or version and builds a fresh order.
 
 **Exploration** (FR-REC-RC-11): fraction `reco.explore.rate` (default 0.10) of positions for mid-high score titles far from profile terms (genres never touched by signals). Deterministic seed from `Version`. Reason `explore`.
 

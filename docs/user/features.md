@@ -75,6 +75,7 @@ Votes are highlighted immediately. While a vote is saving, that title's rating c
 - Cold start: while effective ratings are below the personalization threshold (`N0`, default 30), recommendations can blend a **household prior** from other profiles’ Love/Like (capped); at full personalization that term is zero
 - Optional ONNX embedding model under the data path improves similarity when installed
 - Taste data never leaves the container
+- Scrolling loads further titles. **Top**, at the bottom-right, returns to the start of the page (the same control as on the catalog)
 
 `/ratings` lists votes with export/import. Provider/country default to **All** (ratings stay global); a selected source only drives presence badges. `/taste` helps teach taste while learning is cold.
 

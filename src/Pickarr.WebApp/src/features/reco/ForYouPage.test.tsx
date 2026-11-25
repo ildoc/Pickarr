@@ -205,6 +205,18 @@ describe('ForYouPage', () => {
     expect(localStorage.getItem('pickarr.sourceId.1')).toBe('2')
   })
 
+  it('offers Top after the page has scrolled', async () => {
+    const user = userEvent.setup()
+    const scrollTo = vi.fn()
+    vi.stubGlobal('scrollTo', scrollTo)
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 600 })
+    renderPage('/for-you')
+    const button = await screen.findByRole('button', { name: 'Top' })
+    await user.click(button)
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 })
+  })
+
   it('can include library titles', async () => {
     const user = userEvent.setup()
     renderPage('/for-you')

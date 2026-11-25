@@ -11,6 +11,7 @@ import {
 } from '../../api/catalog'
 import { fetchRecommendations, fetchRecoStatus } from '../../api/recommendations'
 import { fetchSettings } from '../../api/settings'
+import { BackToTop } from '../../components/BackToTop'
 import { savePreferredSourceId } from '../../lib/sourcePreference'
 import { FilterBar } from '../catalog/FilterBar'
 import { TitleGrid } from '../catalog/TitleGrid'
@@ -209,6 +210,8 @@ export function ForYouPage() {
       {titleId != null && Number.isFinite(titleId) && (
         <TitleDialog titleId={titleId} sourceId={sourceId} />
       )}
+
+      <BackToTop />
     </div>
   )
 }

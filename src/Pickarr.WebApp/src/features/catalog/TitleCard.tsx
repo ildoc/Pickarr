@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { useIsMutating } from '@tanstack/react-query'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -10,7 +10,7 @@ import { RECO_DISMISS_FADE_MS, RECO_DISMISS_HOLD_MS } from '../ratings/ratingCac
 import { ReasonChips } from '../reco/ReasonChips'
 import { ArrStatusBadge } from '../title/ArrStatusBadge'
 
-export function TitleCard({
+export const TitleCard = memo(function TitleCard({
   title,
   showPlaces = false,
   dismissOnRate = false,
@@ -110,4 +110,4 @@ export function TitleCard({
       </div>
     </Link>
   )
-}
+})

@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Pickarr.Core.Abstractions;
 using Pickarr.Core.Arr;
 using Pickarr.Core.Catalog;
@@ -16,8 +18,16 @@ namespace Pickarr.Infrastructure.Catalog;
 public sealed class RecoQueryService(
     PickarrDbContext db,
     ISettingsStore settings,
-    IClock clock) : IRecoQueryService
+    IClock clock,
+    IMemoryCache? orderCache = null) : IRecoQueryService
 {
+    /// <summary>
+    /// One build at a time so parallel page refetches share the first diversified order
+    /// instead of each re-running MMR. The cache itself is per filter key.
+    /// </summary>
+    private static readonly SemaphoreSlim DiversifiedOrderGate = new(1, 1);
+
+    private static readonly TimeSpan DiversifiedOrderTtl = TimeSpan.FromMinutes(2);
     public async Task<RecommendationsPageDto> QueryAsync(
         RecommendationsQuery query,
         CancellationToken cancellationToken = default)
@@ -157,84 +167,75 @@ public sealed class RecoQueryService(
         // MMR/explore must use a fixed prefix (§12.8). Growing the window with pageEnd
         // re-injects explore titles that already appeared on earlier pages.
         var diversify = useMmr || exploreRate > 0;
-        var pageEnd = page * pageSize;
 
-        // Light scan (no ReasonsJson) — payload dominates at 5k (NFR-REC-01).
-        var ranksQuery = db.Recommendations.AsNoTracking().Where(r => r.Version == version);
-        if (personalProfileId is int rankProfileId)
-        {
-            ranksQuery = ranksQuery.Where(r => r.ProfileId == rankProfileId);
-        }
-
-        var allRanks = await ranksQuery
-            .OrderBy(r => r.Rank)
-            .Select(r => new { r.TitleId, r.Score, r.Rank })
-            .ToListAsync(cancellationToken);
-
-        var total = 0;
-        var rankedCapacity = diversify ? allRanks.Count : Math.Min(pageEnd, allRanks.Count);
-        var ranked = new List<(int TitleId, double Score, int Rank)>(rankedCapacity);
-        foreach (var row in allRanks)
-        {
-            if (!IsEligible(row.TitleId))
-            {
-                continue;
-            }
-
-            total++;
-            if (diversify || ranked.Count < pageEnd)
-            {
-                ranked.Add((row.TitleId, row.Score, row.Rank));
-            }
-        }
-
-        if (total == 0 || ranked.Count == 0)
-        {
-            return new RecommendationsPageDto(version, stage, page, pageSize, total, []);
-        }
-
-        List<int> orderedIds;
+        int total;
+        IReadOnlyList<int> orderedIds;
         if (!diversify)
         {
-            orderedIds = ranked.Select(r => r.TitleId).ToList();
+            // Light scan (no ReasonsJson) — payload dominates at 5k (NFR-REC-01).
+            var allRanks = await LoadRankRowsAsync(version, personalProfileId, cancellationToken);
+            var pageEnd = page * pageSize;
+            total = 0;
+            var ranked = new List<int>(Math.Min(pageEnd, allRanks.Count));
+            foreach (var row in allRanks)
+            {
+                if (!IsEligible(row.TitleId))
+                {
+                    continue;
+                }
+
+                total++;
+                if (ranked.Count < pageEnd)
+                {
+                    ranked.Add(row.TitleId);
+                }
+            }
+
+            if (total == 0 || ranked.Count == 0)
+            {
+                return new RecommendationsPageDto(version, stage, page, pageSize, total, []);
+            }
+
+            orderedIds = ranked;
         }
         else
         {
-            var prefixCount = Math.Min(RecoMmr.DefaultCandidateCap, ranked.Count);
-            var prefixScored = ranked.Take(prefixCount).Select(r => (r.TitleId, r.Score)).ToList();
-            var prefixIds = prefixScored.Select(r => r.TitleId).ToList();
-
-            if (useMmr)
-            {
-                var sim = await BuildSimilarityLookupAsync(prefixIds, cancellationToken);
-                prefixIds = RecoMmr.RerankIds(
-                    prefixScored,
-                    (a, b) => sim.TryGetValue((Math.Min(a, b), Math.Max(a, b)), out var s) ? s : 0,
-                    lambda).ToList();
-            }
-
-            if (exploreRate > 0)
-            {
-                var exploreCandidates = await PickExploreCandidatesAsync(
-                    prefixIds,
-                    IsEligible,
-                    personalProfileId,
-                    cancellationToken);
-                prefixIds = RecoExplore.Inject(prefixIds, exploreCandidates, exploreRate, version)
-                    .Where(IsEligible)
-                    .ToList();
-            }
-
-            // Stable full order: diversified prefix, then remaining eligible once each.
-            var prefixSet = prefixIds.ToHashSet();
-            orderedIds = new List<int>(ranked.Count);
-            orderedIds.AddRange(prefixIds);
-            foreach (var row in ranked)
-            {
-                if (!prefixSet.Contains(row.TitleId))
+            // Later pages slice this order. Rebuilding it per page repeats the rank scan
+            // and MMR; a vote that shifts eligibility then overlaps ids already shown.
+            var cacheKey = DiversifiedOrderCacheKey(
+                personalProfileId,
+                version,
+                scope,
+                sourceId,
+                query,
+                useMmr,
+                lambda,
+                exploreRate,
+                memberIds,
+                ratedIds,
+                watchedIds,
+                libraryIds,
+                titleFilterIds);
+            orderedIds = await GetDiversifiedOrderAsync(
+                cacheKey,
+                async ct =>
                 {
-                    orderedIds.Add(row.TitleId);
-                }
+                    var ranks = await LoadRankRowsAsync(version, personalProfileId, ct);
+                    return await BuildDiversifiedOrderAsync(
+                        ranks,
+                        IsEligible,
+                        useMmr,
+                        lambda,
+                        exploreRate,
+                        version,
+                        personalProfileId,
+                        ct);
+                },
+                cancellationToken);
+            total = orderedIds.Count;
+            if (total == 0)
+            {
+                return new RecommendationsPageDto(version, stage, page, pageSize, 0, []);
             }
         }
 
@@ -343,6 +344,202 @@ public sealed class RecoQueryService(
         }
 
         return new RecommendationsPageDto(version, stage, page, pageSize, total, items);
+    }
+
+    private async Task<List<(int TitleId, double Score, int Rank)>> LoadRankRowsAsync(
+        int version,
+        int? personalProfileId,
+        CancellationToken cancellationToken)
+    {
+        var ranksQuery = db.Recommendations.AsNoTracking().Where(r => r.Version == version);
+        if (personalProfileId is int rankProfileId)
+        {
+            ranksQuery = ranksQuery.Where(r => r.ProfileId == rankProfileId);
+        }
+
+        var rows = await ranksQuery
+            .OrderBy(r => r.Rank)
+            .ThenBy(r => r.TitleId)
+            .Select(r => new { r.TitleId, r.Score, r.Rank })
+            .ToListAsync(cancellationToken);
+        return rows.Select(r => (r.TitleId, r.Score, r.Rank)).ToList();
+    }
+
+    private async Task<int[]> GetDiversifiedOrderAsync(
+        string cacheKey,
+        Func<CancellationToken, Task<int[]>> build,
+        CancellationToken cancellationToken)
+    {
+        if (orderCache is not null
+            && orderCache.TryGetValue(cacheKey, out int[]? cached)
+            && cached is not null)
+        {
+            return cached;
+        }
+
+        if (orderCache is null)
+        {
+            return await build(cancellationToken);
+        }
+
+        await DiversifiedOrderGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (orderCache.TryGetValue(cacheKey, out cached) && cached is not null)
+            {
+                return cached;
+            }
+
+            var built = await build(cancellationToken);
+            orderCache.Set(cacheKey, built, DiversifiedOrderTtl);
+            return built;
+        }
+        finally
+        {
+            DiversifiedOrderGate.Release();
+        }
+    }
+
+    private async Task<int[]> BuildDiversifiedOrderAsync(
+        IReadOnlyList<(int TitleId, double Score, int Rank)> allRanks,
+        Func<int, bool> isEligible,
+        bool useMmr,
+        double lambda,
+        double exploreRate,
+        int version,
+        int? personalProfileId,
+        CancellationToken cancellationToken)
+    {
+        var ranked = new List<(int TitleId, double Score, int Rank)>(allRanks.Count);
+        foreach (var row in allRanks)
+        {
+            if (isEligible(row.TitleId))
+            {
+                ranked.Add(row);
+            }
+        }
+
+        if (ranked.Count == 0)
+        {
+            return [];
+        }
+
+        var prefixCount = Math.Min(RecoMmr.DefaultCandidateCap, ranked.Count);
+        var prefixScored = ranked.Take(prefixCount).Select(r => (r.TitleId, r.Score)).ToList();
+        var prefixIds = prefixScored.Select(r => r.TitleId).ToList();
+
+        if (useMmr)
+        {
+            var sim = await BuildSimilarityLookupAsync(prefixIds, cancellationToken);
+            prefixIds = RecoMmr.RerankIds(
+                prefixScored,
+                (a, b) => sim.TryGetValue((Math.Min(a, b), Math.Max(a, b)), out var s) ? s : 0,
+                lambda).ToList();
+        }
+
+        if (exploreRate > 0)
+        {
+            var exploreCandidates = await PickExploreCandidatesAsync(
+                prefixIds,
+                isEligible,
+                personalProfileId,
+                cancellationToken);
+            prefixIds = RecoExplore.Inject(prefixIds, exploreCandidates, exploreRate, version)
+                .Where(isEligible)
+                .ToList();
+        }
+
+        // Stable full order: diversified prefix, then remaining eligible once each.
+        var prefixSet = prefixIds.ToHashSet();
+        var orderedIds = new List<int>(ranked.Count);
+        orderedIds.AddRange(prefixIds);
+        foreach (var row in ranked)
+        {
+            if (prefixSet.Add(row.TitleId))
+            {
+                orderedIds.Add(row.TitleId);
+            }
+        }
+
+        return DistinctStable(orderedIds);
+    }
+
+    private static int[] DistinctStable(List<int> ids)
+    {
+        var seen = new HashSet<int>(ids.Count);
+        var unique = new List<int>(ids.Count);
+        foreach (var id in ids)
+        {
+            if (seen.Add(id))
+            {
+                unique.Add(id);
+            }
+        }
+
+        return unique.ToArray();
+    }
+
+    private static string DiversifiedOrderCacheKey(
+        int? personalProfileId,
+        int version,
+        string scope,
+        int? sourceId,
+        RecommendationsQuery query,
+        bool useMmr,
+        double lambda,
+        double exploreRate,
+        HashSet<int> memberIds,
+        HashSet<int> ratedIds,
+        HashSet<int> watchedIds,
+        HashSet<int>? libraryIds,
+        HashSet<int>? titleFilterIds)
+    {
+        var types = query.Types is null
+            ? ""
+            : string.Join('\u001f', query.Types.OrderBy(t => t, StringComparer.OrdinalIgnoreCase));
+        var genres = query.Genres is null
+            ? ""
+            : string.Join(',', query.Genres.OrderBy(id => id));
+        return string.Join(
+            '|',
+            "reco-order",
+            personalProfileId,
+            version,
+            scope,
+            sourceId,
+            types,
+            genres,
+            query.YearFrom,
+            query.YearTo,
+            query.IncludeInLibrary,
+            useMmr,
+            lambda.ToString("R", CultureInfo.InvariantCulture),
+            exploreRate.ToString("R", CultureInfo.InvariantCulture),
+            Fingerprint(memberIds),
+            Fingerprint(ratedIds),
+            Fingerprint(watchedIds),
+            Fingerprint(libraryIds),
+            Fingerprint(titleFilterIds));
+    }
+
+    private static int Fingerprint(HashSet<int>? ids)
+    {
+        if (ids is null || ids.Count == 0)
+        {
+            return 0;
+        }
+
+        var arr = new int[ids.Count];
+        ids.CopyTo(arr);
+        Array.Sort(arr);
+        var hash = new HashCode();
+        hash.Add(arr.Length);
+        foreach (var id in arr)
+        {
+            hash.Add(id);
+        }
+
+        return hash.ToHashCode();
     }
 
     private async Task<IReadOnlyList<(int TitleId, double Similarity)>> QuerySimilarSparseAsync(

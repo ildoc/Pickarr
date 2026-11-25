@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Pickarr.Core.Abstractions;
 using Pickarr.Core.Domain;
 using Pickarr.Core.Domain.Entities;
@@ -33,7 +34,7 @@ public sealed class RecoQueryPaginationTests : IAsyncLifetime
         // prefix+tail those ids reappear when the growing window reaches them.
         const int titleCount = 160;
         const int pageSize = 48;
-        var (query, sourceId, profileId) = await SeedAsync(titleCount, exploreRate: 0.2);
+        var (query, sourceId, profileId, _) = await SeedAsync(titleCount, exploreRate: 0.2);
 
         var seen = new HashSet<int>();
         for (var page = 1; page <= 3; page++)
@@ -61,7 +62,7 @@ public sealed class RecoQueryPaginationTests : IAsyncLifetime
     {
         const int titleCount = 160;
         const int pageSize = 48;
-        var (query, sourceId, profileId) = await SeedAsync(titleCount, exploreRate: 0.2);
+        var (query, sourceId, profileId, _) = await SeedAsync(titleCount, exploreRate: 0.2);
 
         var page1 = await query.QueryAsync(new RecommendationsQuery(
             Scope: RecoMembership.ScopeSource,
@@ -91,9 +92,41 @@ public sealed class RecoQueryPaginationTests : IAsyncLifetime
         page3.Items.Select(i => i.Id).ShouldNotContain(id => page1.Items.Any(i => i.Id == id));
     }
 
-    private async Task<(RecoQueryService Query, int SourceId, int ProfileId)> SeedAsync(
+    [Fact]
+    public async Task Later_pages_reuse_the_cached_diversified_order()
+    {
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var (query, sourceId, profileId, db) = await SeedAsync(160, exploreRate: 0.2, cache);
+
+        var page1 = await query.QueryAsync(new RecommendationsQuery(
+            Scope: RecoMembership.ScopeSource,
+            SourceId: sourceId,
+            Diversify: true,
+            Page: 1,
+            PageSize: 48,
+            ProfileId: profileId));
+        page1.Items.Count.ShouldBe(48);
+
+        // A recompute would see no ranks. The cached order must still page forward.
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM Recommendations");
+
+        var page2 = await query.QueryAsync(new RecommendationsQuery(
+            Scope: RecoMembership.ScopeSource,
+            SourceId: sourceId,
+            Diversify: true,
+            Page: 2,
+            PageSize: 48,
+            ProfileId: profileId));
+
+        page2.Items.Count.ShouldBe(48);
+        page2.Items.Select(i => i.Id).ShouldNotContain(id => page1.Items.Any(i => i.Id == id));
+        page2.Total.ShouldBe(160);
+    }
+
+    private async Task<(RecoQueryService Query, int SourceId, int ProfileId, PickarrDbContext Db)> SeedAsync(
         int titleCount,
-        double exploreRate)
+        double exploreRate,
+        IMemoryCache? cache = null)
     {
         _connection = new SqliteConnection("Data Source=:memory:");
         await _connection.OpenAsync();
@@ -175,7 +208,7 @@ public sealed class RecoQueryPaginationTests : IAsyncLifetime
             [SettingsKeys.RecoMmrLambda] = "0.7",
             [SettingsKeys.RecoExcludeInLibrary] = "false",
         });
-        return (new RecoQueryService(db, settings, new FixedClock(now)), source.Id, profile.Id);
+        return (new RecoQueryService(db, settings, new FixedClock(now), cache), source.Id, profile.Id, db);
     }
 
     private sealed class FixedClock(DateTime utcNow) : IClock
