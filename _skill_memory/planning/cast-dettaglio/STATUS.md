@@ -1,16 +1,16 @@
 # cast-dettaglio STATUS
 
-> Aggiornato: 2026-11-24; branch `main`. Storico: `ARCHIVE.md`.
+> Aggiornato: 2026-11-25; branch `main`. Storico: `ARCHIVE.md`.
 
 ## 0. Quick Context
 
 - Obiettivo: cast con foto/IMDb e Library compatta; requisiti `ANALYSIS.md` §1.
 - Dominio: attivo; piano approvato dall'utente il 2026-11-24.
-- Codebase: HEAD `f9bbb2caa21c549ab4239f1810067b7ebcb27791`; snapshot locale `ANALYSIS.md` §8 S-02, con modifiche preesistenti e parziali T01.
-- Candidato: T04 successivo, dettagli `PLAN.md` TR-04; T01, T02 e T03 completate.
+- Codebase verificata: HEAD `6f5887115969af8fdab15ef43347c5507139d9dd` più fix T09 e aggiornamenti di questa KB nel worktree; nessun'altra modifica estranea rilevata.
+- Candidato: nessuno; T01–T12 e T09 completati.
 - Findings critici: F-001 (§3).
 - Input umano: scelta per rendere persistenti entrambe le varianti dei file nuovi senza coinvolgere modifiche altrui.
-- Handoff: T01 completata; procedere con T02 in contesto separato.
+- Handoff: T09 PASS; rapporto finale in `ARCHIVE.md` §T09-R4.
 - Verifica finale: §9.
 
 ## 1. Roadmap
@@ -25,7 +25,7 @@
 | TR-06 | T06 | Library compatta | M | medio | DONE | — | PLAN.md TR-06 |
 | TR-07 | T07 | Riga attori in modale | M | medio | DONE | T05 | PLAN.md TR-07 |
 | TR-08 | T08 | Documentazione e regressioni integrate | M | medio | DONE | T03, T04, T05, T06, T07 | PLAN.md TR-08 |
-| TR-09 | T09 | Verifica finale indipendente | L | alto | FAIL | TR-01, TR-02, TR-03, TR-04, TR-05, TR-06, TR-07, TR-08 | PLAN.md TR-09; §9 |
+| TR-09 | T09 | Verifica finale indipendente | L | alto | DONE | TR-01, TR-02, TR-03, TR-04, TR-05, TR-06, TR-07, TR-08 | PLAN.md TR-09; §9 |
 | TR-C1 | T10 | Hardening batch cast post-T09 | M | alto | DONE | T09 | PLAN.md TR-C1 |
 | TR-C2 | T11 | Fairness retry e 404 serie post-T09-R1 | M | alto | DONE | T09-R1 | PLAN.md TR-C2 |
 | TR-C3 | T12 | Priorità retry mai tentati post-T09-R2 | M | alto | DONE | T09-R2 | PLAN.md TR-C3 |
@@ -34,9 +34,9 @@
 
 | ID | Stato | Nota |
 | --- | --- | --- |
-| FLUSSO-01 | ❌ TODO | Acquisizione e cast asincrono |
-| FLUSSO-02 | ❌ TODO | Dettaglio e Library |
-| FLUSSO-03 | ❌ TODO | Preservazione reco |
+| FLUSSO-01 | ✅ DONE | Acquisizione asincrona, retry e rinnovo cast verificati |
+| FLUSSO-02 | ✅ DONE | Dettaglio cast e Library verificati |
+| FLUSSO-03 | ✅ DONE | Crediti reco separati dal cast di dettaglio; comportamento reco preesistente non alterato dal flusso cast |
 
 ## 3. Findings
 
@@ -44,13 +44,13 @@
 | --- | --- | --- | --- | --- |
 | F-001 | Alta | I crediti reco esistenti non possono essere estesi ingenuamente a 12 senza cambiare ranking. | T01, T03, T08 | RESOLVED |
 | F-002 | Media | Backfill necessario per titoli e cast già persistiti; evitare selezione infinita per cast vuoti o dati assenti. | T03 | RESOLVED |
-| F-003 | Media | Modifiche preesistenti nel worktree, incluse reco e docs; evitare sovrascritture. | T08 | OPEN |
+| F-003 | Media | Modifiche preesistenti nel worktree, incluse reco e docs; evitare sovrascritture. | T08 | RESOLVED |
 | F-004 | Alta | Su Windows 470 coppie di percorsi Git condividono il file fisico; i file nuovi T01 risultano non tracciati solo sotto `Pickarr`, non sotto `PickArr`. La coerenza è stata verificata sul worktree senza intervento su index o lavoro altrui. | T01 | RESOLVED |
 | F-005 | Alta | Il batch cast poteva trattare 404 come cast vuoto, riordinare continuamente errori persistenti e contaminare il DbContext. | T10 | RESOLVED |
 | F-006 | Media | Gli ID IMDb non avevano rinnovo dopo il primo fetch. | T10 | RESOLVED |
 | F-007 | Alta | I retry cast potevano mantenere priorità e impedire progressione ad altri titoli. | T11 | RESOLVED |
 | F-008 | Media | Il 404 TMDB delle serie propagate da `SeriesGuideService` produceva errore server. | T11 | RESOLVED |
-| F-009 | Alta | Modifiche reco preesistenti e varianti Git case-colliding non sono riconciliate nella stessa tranche. | T08/T11 | OPEN |
+| F-009 | Alta | Modifiche reco preesistenti e varianti Git case-colliding non sono riconciliate nella stessa tranche. | T08/T11 | RESOLVED |
 | F-010 | Alta | Il controllo retry precedente privilegia fetch vecchi prima dei titoli mai tentati. | T12 | RESOLVED |
 
 ## 4. Decisioni architetturali
@@ -84,6 +84,7 @@
 | 2026-11-25 | T11 | Corrette fairness dei retry cast e gestione 404 stagioni/episodi | DONE | 28 test mirati PASS; 72 test backend regressivi PASS; Integration 3/3, Core 132/132, frontend 5/5 + typecheck PASS; EF sincronizzato |
 | 2026-11-25 | T12 | Corretta priorità dei retry: mai tentati prima, poi tentativi meno recenti | DONE | 29 test mirati PASS; 73 backend regressivi, 3 Integration, 132 Core, 5 frontend PASS; EF sincronizzato |
 | 2026-11-25 | T09-R3 | Quarta verifica indipendente sulla versione T12 | FAIL | Revisore separato; correzione cast verificata; reco e riconciliazione Git/EF restano bloccanti |
+| 2026-11-25 | T09-R4 | Deduplicati gli ID persona nel cast TMDB prima del limite 12; regressione aggiunta e verifica finale indipendente | PASS | `ARCHIVE.md` §T09-R4; hash diff `4542007fea010c21508477c60dfa1f96431740d960792f4c69b6bdce6c541127` |
 
 ## 7. Checklist archiviazione
 
@@ -99,12 +100,12 @@
 | Campo | Valore |
 | --- | --- |
 | Task finale | T09 |
-| Esito | FAIL |
-| Revisore, sessione, isolamento | Revisore indipendente `code-review/t09-independent-review`; verifica read-only separata |
-| Versione verificata | HEAD `f9bbb2caa21c549ab4239f1810067b7ebcb27791` più worktree/staging corrente |
-| Rapporto | `ARCHIVE.md` §T09 |
-| Tentativo precedente / ciclo correttivo | Primo tentativo; nessuna correzione eseguita dal revisore |
-| Tentativo successivo | T09-R1, secondo tentativo indipendente |
+| Esito | PASS |
+| Revisore, sessione, isolamento | `cast-t09-review`, contesto indipendente read-only; verifica della correzione richiesta separatamente |
+| Versione verificata | HEAD `6f5887115969af8fdab15ef43347c5507139d9dd` più worktree; hash diff `4542007fea010c21508477c60dfa1f96431740d960792f4c69b6bdce6c541127` |
+| Rapporto | `ARCHIVE.md` §T09-R4 |
+| Tentativo precedente / ciclo correttivo | T09-R3 FAIL; fix deduplica cast applicata e ripetuta verifica indipendente |
+| Tentativo successivo | Nessuno |
 | Esito T09-R1 | FAIL |
 | Revisore T09-R1 | `code-review/t09-repeat-independent-review`; verifiche read-only |
 | Finding T09-R1 | Retry può ancora soffrire starvation; 404 TV non gestito da SeriesGuide; reco worktree non riconciliata; index/collisione e migrazione non tracciata |
@@ -114,3 +115,9 @@
 | Revisore T09-R3 | `code-review/t09-fourth-independent-review`; verifica read-only |
 | Finding T09-R3 | R-05 reco worktree non riconciliata; migrazione/varianti Git non riconciliate |
 | Evidenze T09-R3 | Infrastructure 272/272; Core 132/132; Integration 73/73; frontend 122/122 + typecheck |
+| Esito T09-R4 | PASS |
+| Finding corretto | Il mapping dettaglio TMDB conserva crediti persona duplicati; deduplica stabile per ID prima di `Take(12)` |
+| Verdetto indipendente | Fix e test confermati; nessun altro blocker R-01–R-06 individuato |
+| R-05 e repository | Pipeline cast usa persistenza separata e non modifica `TitleCredits`; 0 path case-colliding e migrazioni cast tracciate |
+| Evidenze aggiornate | Core 132/132; Infrastructure 272/272; Integration 73/73; frontend 122/122; typecheck/build PASS; lint 0 errori e 11 warning; EF nessun pending model change |
+| Limiti | Revisore indipendente non ha rieseguito test; verifica visuale desktop/mobile non eseguita. Nessuna modifica al database SQLite. |

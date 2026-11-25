@@ -162,3 +162,32 @@ Nessun elemento archiviato.
 
 - Le modifiche reco preesistenti nel worktree non sono state sovrascritte o approvate in questa tranche.
 - Le collisioni case-insensitive e l'index Git non sono stati modificati; D-04 resta valido.
+
+## T09-R4 — Verifica finale dopo deduplica cast
+
+**Esito:** PASS
+
+**Versione:** HEAD `6f5887115969af8fdab15ef43347c5507139d9dd` più le sole modifiche T09 a `TmdbMetadataProvider` e `EnrichmentServiceTests`; hash SHA-256 del diff binario: `4542007fea010c21508477c60dfa1f96431740d960792f4c69b6bdce6c541127`.
+
+**Correzione applicata:**
+
+- `MapDetailCast` ordina i crediti, deduplica per ID persona mantenendo la prima occorrenza e applica poi il limite di 12.
+- Il test WireMock include un duplicato prima del dodicesimo attore distinto e asserisce ordine e 12 ID univoci.
+- Il difetto bloccava il salvataggio per il vincolo chiave `(TitleId, PersonId)` e causava retry del titolo.
+
+**Verifica indipendente:**
+
+- Il revisore `cast-t09-review` ha confermato il fix e non ha rilevato altri blocker R-01–R-06.
+- La verifica è read-only e non ha eseguito test; la suite è stata eseguita separatamente.
+- R-05 è circoscritto al cast: `DetailCastService` usa relazioni dedicate e il test verifica che i `TitleCredits` reco rimangano intatti. Le modifiche reco già committed su HEAD sono distinte e documentate, non introdotte dalla tranche cast.
+- HEAD contiene zero gruppi di path case-colliding; le migrazioni cast e i relativi designer sono tracciati.
+
+**Verifiche eseguite:**
+
+- `dotnet test tests/Pickarr.Infrastructure.Tests --no-restore --filter FullyQualifiedName~EnrichmentServiceTests`: 13/13 PASS.
+- `dotnet test Pickarr.slnx --no-restore`: Core 132/132, Infrastructure 272/272, Integration 73/73 PASS.
+- Frontend: 122/122 test, typecheck e build PASS; lint 0 errori e 11 warning preesistenti.
+- EF CLI 10.0.14: nessun pending model change.
+- `git diff --check`: PASS; nessuna modifica applicata al database SQLite.
+
+**Limiti:** nessuna verifica visuale desktop/mobile; nessun test eseguito dal revisore indipendente.

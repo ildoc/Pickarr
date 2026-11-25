@@ -285,6 +285,7 @@ public sealed class TmdbMetadataProvider(
         return credits.Cast
             .Where(c => c.Id > 0 && !string.IsNullOrWhiteSpace(c.Name))
             .OrderBy(c => c.Order)
+            .DistinctBy(c => c.Id)
             .Take(12)
             .Select(c => new TmdbDetailCastMember(
                 c.Id,

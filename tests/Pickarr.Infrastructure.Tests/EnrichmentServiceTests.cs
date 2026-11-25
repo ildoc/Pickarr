@@ -57,6 +57,13 @@ public sealed class EnrichmentServiceTests : IAsyncLifetime
                 order = i,
                 profile_path = i == 0 ? "/actor0.jpg" : (string?)null,
             })
+            .Append(new
+            {
+                id = 1000,
+                name = "Actor 0 duplicate",
+                order = 1,
+                profile_path = (string?)"/duplicate.jpg",
+            })
             .ToArray();
         var movie = JsonSerializer.Serialize(new
         {
@@ -78,6 +85,7 @@ public sealed class EnrichmentServiceTests : IAsyncLifetime
         details.DetailCast[0].PersonId.ShouldBe(1000);
         details.DetailCast[0].Name.ShouldBe("Actor 0");
         details.DetailCast[0].ProfilePath.ShouldBe("/actor0.jpg");
+        details.DetailCast.Select(member => member.PersonId).ShouldBe(Enumerable.Range(1000, 12));
         details.DetailCast[11].PersonId.ShouldBe(1011);
         details.DetailCast[11].ProfilePath.ShouldBeNull();
         details.Credits.ShouldNotBeNull();
