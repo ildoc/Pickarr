@@ -562,7 +562,9 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
         var disabled = new CatalogSource
         {
             ProviderId = (await db.CatalogSources.SingleAsync(s => s.Id == sourceId)).ProviderId,
-            CountryCode = "US", MetadataLanguage = "en-US", IsEnabled = false,
+            CountryCode = "US",
+            MetadataLanguage = "en-US",
+            IsEnabled = false,
         };
         var other = new Profile { Name = "Other", Color = "teal", CreatedAt = DateTime.UtcNow };
         db.Profiles.Add(other);
@@ -571,7 +573,10 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
         db.TitleGenres.Add(new TitleGenre { TitleId = 999, GenreId = 18 });
         db.Availabilities.Add(new Availability
         {
-            TitleId = 999, CatalogSource = disabled, FirstSeenAt = DateTime.UtcNow, LastSeenAt = DateTime.UtcNow,
+            TitleId = 999,
+            CatalogSource = disabled,
+            FirstSeenAt = DateTime.UtcNow,
+            LastSeenAt = DateTime.UtcNow,
         });
         await db.SaveChangesAsync();
 
@@ -581,7 +586,10 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
         baseline.Select(r => r.TitleId).ShouldBe([101, 102, 103]);
         db.Ratings.Add(new Rating
         {
-            ProfileId = profileId, TitleId = 999, Value = RatingValues.Love, RatedAt = DateTime.UtcNow,
+            ProfileId = profileId,
+            TitleId = 999,
+            Value = RatingValues.Love,
+            RatedAt = DateTime.UtcNow,
         });
         await db.SaveChangesAsync();
         await build.BuildAsync(profileId);
@@ -615,7 +623,10 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
         db.Titles.Add(external);
         db.Ratings.Add(new Rating
         {
-            ProfileId = profileId, TitleId = 101, Value = RatingValues.Like, RatedAt = DateTime.UtcNow,
+            ProfileId = profileId,
+            TitleId = 101,
+            Value = RatingValues.Like,
+            RatedAt = DateTime.UtcNow,
         });
         await db.SaveChangesAsync();
         await build.BuildAsync(profileId);
@@ -624,7 +635,10 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
 
         db.Ratings.Add(new Rating
         {
-            ProfileId = profileId, TitleId = 998, Value = RatingValues.Love, RatedAt = DateTime.UtcNow,
+            ProfileId = profileId,
+            TitleId = 998,
+            Value = RatingValues.Love,
+            RatedAt = DateTime.UtcNow,
         });
         await db.SaveChangesAsync();
         await build.BuildAsync(profileId);
@@ -649,8 +663,10 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
         SeedUnitEmbedding(db, 997, [1f, 0f, 0f]);
         var state = new RecoState
         {
-            ProfileId = profileId, ModelStatus = RecoModelStatuses.Ready,
-            ModelId = RecoModelCatalog.DefaultModelId, EmbeddingCoverage = 1,
+            ProfileId = profileId,
+            ModelStatus = RecoModelStatuses.Ready,
+            ModelId = RecoModelCatalog.DefaultModelId,
+            EmbeddingCoverage = 1,
         };
         db.RecoStates.Add(state);
         await db.SaveChangesAsync();

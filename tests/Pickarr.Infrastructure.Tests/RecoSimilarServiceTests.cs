@@ -92,8 +92,11 @@ public sealed class RecoSimilarServiceTests
         {
             db.Titles.Add(new Title
             {
-                Id = row.Id, OriginalTitle = $"T{row.Id}", MediaType = MediaTypes.Movie,
-                Category = TitleCategories.Movie, OriginalLanguage = row.English ? "en" : null,
+                Id = row.Id,
+                OriginalTitle = $"T{row.Id}",
+                MediaType = MediaTypes.Movie,
+                Category = TitleCategories.Movie,
+                OriginalLanguage = row.English ? "en" : null,
                 MetadataStatus = MetadataStatuses.Ready,
             });
             db.Availabilities.Add(new Availability { TitleId = row.Id, CatalogSource = row.Id == Disabled ? disabled : enabled });
@@ -101,7 +104,9 @@ public sealed class RecoSimilarServiceTests
             {
                 db.TitleEmbeddings.Add(new TitleEmbedding
                 {
-                    TitleId = row.Id, ModelId = RecoModelCatalog.DefaultModelId, TextHash = "fixture",
+                    TitleId = row.Id,
+                    ModelId = RecoModelCatalog.DefaultModelId,
+                    TextHash = "fixture",
                     Vector = RecoEmbeddingService.FloatsToBytes([x, MathF.Sqrt(1 - x * x)]),
                 });
             }
