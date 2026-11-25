@@ -58,6 +58,8 @@ Profile context arrives via `X-Pickarr-Profile`. Arr adds without the header are
 
 Title read paths (catalog, list, ratings, detail, recommendations, onboarding, and similar) use EF split queries for their collection includes. This avoids multiplying localization, genre, availability, and household-profile rows in a single join. Page hydration stays bounded to the selected title IDs. SQLite remains the only database; no Redis service is required. `TitleQueryServiceTests` checks the 300 ms p95 read budget against an in-memory SQLite catalog of 10,000 titles with rich metadata and ten profiles.
 
+Recommendation rebuild and embedding queries explicitly send large ID collections as single parameters via `EF.Parameter`, so they do not depend on the context's collection-translation defaults or exceed SQLite's variable limit.
+
 ## Jobs (conceptual)
 
 | Area | Examples |

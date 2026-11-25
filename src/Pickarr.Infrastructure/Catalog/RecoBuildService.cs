@@ -57,7 +57,7 @@ public sealed class RecoBuildService(
         // Pool: any Availability on enabled source+provider; RemovedAt is irrelevant (BR-REC-07).
         var poolTitleIds = await db.Availabilities
             .AsNoTracking()
-            .Where(a => enabledSourceIds.Contains(a.CatalogSourceId))
+            .Where(a => EF.Parameter(enabledSourceIds).Contains(a.CatalogSourceId))
             .Select(a => a.TitleId)
             .Distinct()
             .ToListAsync(cancellationToken);
@@ -79,7 +79,7 @@ public sealed class RecoBuildService(
         var featureIds = poolIdSet.Union(globalSignals.Keys).ToHashSet();
         var featureTitles = await db.Titles
             .AsNoTracking()
-            .Where(t => featureIds.Contains(t.Id))
+            .Where(t => EF.Parameter(featureIds).Contains(t.Id))
             .Select(t => new
             {
                 t.Id,
@@ -95,7 +95,7 @@ public sealed class RecoBuildService(
         var titles = featureTitles.Where(t => poolIdSet.Contains(t.Id)).ToList();
 
         var genreRows = await db.TitleGenres.AsNoTracking()
-            .Where(tg => featureIds.Contains(tg.TitleId))
+            .Where(tg => EF.Parameter(featureIds).Contains(tg.TitleId))
             .Select(tg => new { tg.TitleId, tg.GenreId })
             .ToListAsync(cancellationToken);
         var genresByTitle = genreRows
@@ -103,7 +103,7 @@ public sealed class RecoBuildService(
             .ToDictionary(g => g.Key, g => (IReadOnlyList<int>)g.Select(x => x.GenreId).ToList());
 
         var keywordRows = await db.TitleKeywords.AsNoTracking()
-            .Where(tk => featureIds.Contains(tk.TitleId))
+            .Where(tk => EF.Parameter(featureIds).Contains(tk.TitleId))
             .Select(tk => new { tk.TitleId, tk.KeywordId })
             .ToListAsync(cancellationToken);
         var keywordsByTitle = keywordRows
@@ -111,7 +111,7 @@ public sealed class RecoBuildService(
             .ToDictionary(g => g.Key, g => (IReadOnlyList<int>)g.Select(x => x.KeywordId).ToList());
 
         var creditRows = await db.TitleCredits.AsNoTracking()
-            .Where(tc => featureIds.Contains(tc.TitleId))
+            .Where(tc => EF.Parameter(featureIds).Contains(tc.TitleId))
             .Select(tc => new { tc.TitleId, tc.PersonId, tc.Role })
             .ToListAsync(cancellationToken);
         var castByTitle = creditRows
@@ -153,7 +153,7 @@ public sealed class RecoBuildService(
         {
             var modelId = statePeek?.ModelId ?? RecoModelCatalog.DefaultModelId;
             var embRows = await db.TitleEmbeddings.AsNoTracking()
-                .Where(e => e.ModelId == modelId && featureIds.Contains(e.TitleId))
+                .Where(e => e.ModelId == modelId && EF.Parameter(featureIds).Contains(e.TitleId))
                 .Select(e => new { e.TitleId, e.Vector })
                 .ToListAsync(cancellationToken);
             embMap = embRows
@@ -206,7 +206,7 @@ public sealed class RecoBuildService(
         if (tmdbAmpWeight > 0 && nEff > 0)
         {
             var edgeRows = await db.TitleTmdbRecommendations.AsNoTracking()
-                .Where(e => poolIdSet.Contains(e.SourceTitleId) && poolIdSet.Contains(e.RelatedTitleId))
+                .Where(e => EF.Parameter(poolIdSet).Contains(e.SourceTitleId) && EF.Parameter(poolIdSet).Contains(e.RelatedTitleId))
                 .Select(e => new { e.SourceTitleId, e.RelatedTitleId, e.Rank })
                 .ToListAsync(cancellationToken);
             tmdbEdges = edgeRows
@@ -492,7 +492,7 @@ public sealed class RecoBuildService(
     {
         // Prefer en-US localization for reason chips; fall back to original title.
         var rows = await db.Titles.AsNoTracking()
-            .Where(t => featureIds.Contains(t.Id))
+            .Where(t => EF.Parameter(featureIds).Contains(t.Id))
             .Select(t => new
             {
                 t.Id,
@@ -562,7 +562,7 @@ public sealed class RecoBuildService(
         if (genreIds.Count > 0)
         {
             var genres = await db.Genres.AsNoTracking()
-                .Where(g => genreIds.Contains(g.Id))
+                .Where(g => EF.Parameter(genreIds).Contains(g.Id))
                 .Select(g => new
                 {
                     g.Id,
@@ -585,7 +585,7 @@ public sealed class RecoBuildService(
         if (keywordIds.Count > 0)
         {
             var keywords = await db.Keywords.AsNoTracking()
-                .Where(k => keywordIds.Contains(k.Id))
+                .Where(k => EF.Parameter(keywordIds).Contains(k.Id))
                 .Select(k => new { k.Id, k.Name })
                 .ToListAsync(cancellationToken);
             foreach (var k in keywords)
@@ -597,7 +597,7 @@ public sealed class RecoBuildService(
         if (personIds.Count > 0)
         {
             var people = await db.People.AsNoTracking()
-                .Where(p => personIds.Contains(p.Id))
+                .Where(p => EF.Parameter(personIds).Contains(p.Id))
                 .Select(p => new { p.Id, p.Name })
                 .ToListAsync(cancellationToken);
             foreach (var p in people)

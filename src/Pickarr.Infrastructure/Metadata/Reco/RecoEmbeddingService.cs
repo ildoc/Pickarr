@@ -54,13 +54,13 @@ public sealed class RecoEmbeddingService(
         }
 
         var poolIds = await db.Availabilities.AsNoTracking()
-            .Where(a => enabledSourceIds.Contains(a.CatalogSourceId))
+            .Where(a => EF.Parameter(enabledSourceIds).Contains(a.CatalogSourceId))
             .Select(a => a.TitleId)
             .Distinct()
             .ToListAsync(cancellationToken);
 
         var existing = await db.TitleEmbeddings.AsNoTracking()
-            .Where(e => e.ModelId == modelId && poolIds.Contains(e.TitleId))
+            .Where(e => e.ModelId == modelId && EF.Parameter(poolIds).Contains(e.TitleId))
             .Select(e => new { e.TitleId, e.TextHash })
             .ToListAsync(cancellationToken);
         var hashByTitle = existing.ToDictionary(e => e.TitleId, e => e.TextHash);
@@ -169,13 +169,13 @@ public sealed class RecoEmbeddingService(
             .Select(s => s.Id)
             .ToListAsync(ct);
         var poolIds = await db.Availabilities.AsNoTracking()
-            .Where(a => enabledSourceIds.Contains(a.CatalogSourceId))
+            .Where(a => EF.Parameter(enabledSourceIds).Contains(a.CatalogSourceId))
             .Select(a => a.TitleId)
             .Distinct()
             .ToListAsync(ct);
         var poolSet = poolIds.ToHashSet();
         embedded = await db.TitleEmbeddings.AsNoTracking()
-            .Where(e => e.ModelId == modelId && poolSet.Contains(e.TitleId))
+            .Where(e => e.ModelId == modelId && EF.Parameter(poolSet).Contains(e.TitleId))
             .CountAsync(ct);
 
         var coverage = poolIds.Count == 0 ? 0 : (double)embedded / poolIds.Count;
@@ -198,7 +198,7 @@ public sealed class RecoEmbeddingService(
             .Include(t => t.Localizations)
             .Include(t => t.TitleGenres).ThenInclude(tg => tg.Genre)!.ThenInclude(g => g!.Localizations)
             .Include(t => t.TitleKeywords).ThenInclude(tk => tk.Keyword)
-            .Where(t => titleIds.Contains(t.Id))
+            .Where(t => EF.Parameter(titleIds).Contains(t.Id))
             .ToListAsync(ct);
 
         var result = new Dictionary<int, string>(titles.Count);

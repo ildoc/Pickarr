@@ -2,6 +2,7 @@ using Hangfire;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using NSubstitute;
 using Pickarr.Core.Abstractions;
 using Pickarr.Core.Domain;
 using Pickarr.Core.Domain.Entities;
@@ -27,6 +28,58 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
         {
             await _connection.DisposeAsync();
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Jobs_support_catalogs_larger_than_sqlite_variable_limit(bool jsonCollections)
+    {
+        var (db, build, sourceId, profileId) = await SeedL1Async(jsonCollections: jsonCollections);
+        var now = DateTime.UtcNow;
+        var ids = Enumerable.Range(1000, 120).ToArray();
+        db.Titles.AddRange(ids.Select(id => Title(id, 7, 100, 10)));
+        db.Availabilities.AddRange(ids.Select(id => new Availability
+        {
+            TitleId = id,
+            CatalogSourceId = sourceId,
+            FirstSeenAt = now,
+            LastSeenAt = now,
+        }));
+        db.Keywords.AddRange(ids.Select(id => new Keyword { Id = id, Name = $"Keyword {id}" }));
+        db.TitleKeywords.AddRange(ids.Select(id => new TitleKeyword { TitleId = 101, KeywordId = id }));
+        db.People.AddRange(ids.Select(id => new Person { Id = id, Name = $"Person {id}" }));
+        db.TitleCredits.AddRange(ids.Select(id => new TitleCredit
+        {
+            TitleId = 101,
+            PersonId = id,
+            Role = CreditRoles.Cast,
+            Order = id,
+        }));
+        db.Ratings.Add(new Rating { ProfileId = profileId, TitleId = 101, Value = RatingValues.Like, RatedAt = now });
+        db.TitleTmdbRecommendations.Add(new TitleTmdbRecommendation { SourceTitleId = 101, RelatedTitleId = 102, Rank = 1 });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        SQLitePCL.raw.sqlite3_limit(_connection!.Handle, SQLitePCL.raw.SQLITE_LIMIT_VARIABLE_NUMBER, 80);
+
+        var models = Substitute.For<IRecoModelService>();
+        models.IsReady.Returns(true);
+        models.GetInfoAsync(Arg.Any<CancellationToken>()).Returns(new RecoModelInfoDto("ready", "test", null, null, null));
+        models.TryEmbedBatch(Arg.Any<IReadOnlyList<string>>()).Returns(call =>
+            call.Arg<IReadOnlyList<string>>().Select(_ => new[] { 1f, 0f }).ToList());
+        var embedding = new RecoEmbeddingService(db, models, new EmptySettingsStore(new Dictionary<string, string>
+        {
+            [SettingsKeys.RecoEmbeddingsThrottle] = "false",
+        }), new FixedClock(now), Microsoft.Extensions.Logging.Abstractions.NullLogger<RecoEmbeddingService>.Instance);
+
+        (await embedding.EmbedPendingAsync()).ShouldBe(123);
+        (await embedding.EmbedPendingAsync()).ShouldBe(0);
+        var state = await db.RecoStates.SingleAsync();
+        state.EmbeddingCoverage.ShouldBe(1);
+        state.ModelStatus = RecoModelStatuses.Ready;
+        await db.SaveChangesAsync();
+        (await build.BuildAsync(profileId)).ShouldBe(1);
+        (await db.Recommendations.CountAsync()).ShouldBe(123);
     }
 
     [Fact]
@@ -807,13 +860,17 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
 
     private async Task<(PickarrDbContext Db, RecoBuildService Build, int EnabledSourceId, int AdminId)> SeedL1Async(
         ISettingsStore? settings = null,
-        IRecoLevel3Model? level3Model = null)
+        IRecoLevel3Model? level3Model = null,
+        bool jsonCollections = false)
     {
         _connection = new SqliteConnection("Data Source=:memory:");
         await _connection.OpenAsync();
 
         var options = new DbContextOptionsBuilder<PickarrDbContext>()
-            .UseSqlite(_connection)
+            .UseSqlite(_connection, sqlite =>
+            {
+                if (jsonCollections) sqlite.UseParameterizedCollectionMode(ParameterTranslationMode.Parameter);
+            })
             .Options;
         var db = new PickarrDbContext(options);
         await db.Database.EnsureCreatedAsync();
