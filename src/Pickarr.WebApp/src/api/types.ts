@@ -132,6 +132,7 @@ export type TitleDetail = {
     leavingDate: string | null
   }>
   cast?: string[]
+  castMembers?: CastMember[]
   arr: {
     kind: string | null
     arrId: number | null
@@ -155,6 +156,12 @@ export type TitleDetail = {
     addBlockedReason: string | null
     externalUrl: string | null
   }
+}
+
+export type CastMember = {
+  name: string
+  photoUrl: string | null
+  imdbUrl: string | null
 }
 
 export type SecretStatus = { isSet: boolean; fromEnvironment?: boolean }

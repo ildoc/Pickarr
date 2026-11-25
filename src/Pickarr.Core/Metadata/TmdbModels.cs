@@ -7,6 +7,10 @@ public sealed record TmdbKeyword(int Id, string Name);
 /// <summary>Structured credit with TMDB person id (persist); distinct from <see cref="TmdbTitleDetails.Cast"/> name list.</summary>
 public sealed record TmdbCredit(int PersonId, string Name, string Role, int Order);
 
+public sealed record TmdbDetailCastMember(int PersonId, string Name, string? ProfilePath, int Order);
+
+public sealed record TmdbPersonExternalIds(string? ImdbId);
+
 public sealed record TmdbTitleDetails(
     int Id,
     string? Title,
@@ -31,7 +35,8 @@ public sealed record TmdbTitleDetails(
     IReadOnlyList<string>? Cast = null,
     IReadOnlyList<TmdbSeason>? Seasons = null,
     IReadOnlyList<TmdbCredit>? Credits = null,
-    IReadOnlyList<string>? OriginCountries = null);
+    IReadOnlyList<string>? OriginCountries = null,
+    IReadOnlyList<TmdbDetailCastMember>? DetailCast = null);
 
 public sealed record TmdbSeason(
     int Number,
@@ -49,6 +54,11 @@ public sealed record TmdbEpisode(
     int? RuntimeMinutes);
 
 public sealed record TmdbFindResult(int TmdbId, string TmdbType);
+
+public sealed class TmdbResourceNotFoundException(string resource) : Exception($"TMDB resource not found: {resource}")
+{
+    public string Resource { get; } = resource;
+}
 
 /// <summary>One entry from TMDB <c>/movie|tv/{id}/recommendations</c> (same media type as the source).</summary>
 public sealed record TmdbRecommendationRef(int TmdbId, int Rank);

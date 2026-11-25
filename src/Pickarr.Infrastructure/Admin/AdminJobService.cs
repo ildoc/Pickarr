@@ -147,6 +147,21 @@ public sealed class AdminJobService(
             cancellationToken));
 
         jobs.Add(await BuildJobAsync(
+            DetailCastJob.RecurringJobId,
+            JobText.DetailCastName,
+            JobText.DetailCastDescription,
+            SyncRunKinds.DetailCast,
+            sourceId: null,
+            countryCode: null,
+            providerName: null,
+            cron: null,
+            includeRuns: true,
+            canTrigger: true,
+            recurring,
+            activity,
+            cancellationToken));
+
+        jobs.Add(await BuildJobAsync(
             ArrSyncJob.SonarrJobId,
             JobText.SonarrName,
             JobText.SonarrDescription,
@@ -313,6 +328,14 @@ public sealed class AdminJobService(
             await EnsureNotRunningAsync(SyncRunKinds.MetadataRefresh, sourceId: null, cancellationToken);
             var hf = backgroundJobs.Enqueue<MetadataRefreshJob>(j => j.ExecuteAsync(true, CancellationToken.None));
             var runId = await WaitForRunAsync(SyncRunKinds.MetadataRefresh, sourceId: null, cancellationToken);
+            return new TriggerJobResult(runId, hf);
+        }
+
+        if (string.Equals(jobKey, DetailCastJob.RecurringJobId, StringComparison.OrdinalIgnoreCase))
+        {
+            await EnsureNotRunningAsync(SyncRunKinds.DetailCast, sourceId: null, cancellationToken);
+            var hf = backgroundJobs.Enqueue<DetailCastJob>(j => j.ExecuteAsync(true, CancellationToken.None));
+            var runId = await WaitForRunAsync(SyncRunKinds.DetailCast, sourceId: null, cancellationToken);
             return new TriggerJobResult(runId, hf);
         }
 
@@ -653,6 +676,12 @@ public sealed class AdminJobService(
         if (string.Equals(jobKey, MetadataRefreshJob.RecurringJobId, StringComparison.OrdinalIgnoreCase))
         {
             kind = SyncRunKinds.MetadataRefresh;
+            return true;
+        }
+
+        if (string.Equals(jobKey, DetailCastJob.RecurringJobId, StringComparison.OrdinalIgnoreCase))
+        {
+            kind = SyncRunKinds.DetailCast;
             return true;
         }
 

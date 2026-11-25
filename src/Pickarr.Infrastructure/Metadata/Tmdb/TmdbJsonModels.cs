@@ -113,6 +113,12 @@ internal sealed class TmdbCastDto
     [JsonPropertyName("id")] public int Id { get; set; }
     [JsonPropertyName("name")] public string Name { get; set; } = "";
     [JsonPropertyName("order")] public int Order { get; set; }
+    [JsonPropertyName("profile_path")] public string? ProfilePath { get; set; }
+}
+
+internal sealed class TmdbPersonExternalIdsDto
+{
+    [JsonPropertyName("imdb_id")] public string? ImdbId { get; set; }
 }
 
 internal sealed class TmdbCrewDto

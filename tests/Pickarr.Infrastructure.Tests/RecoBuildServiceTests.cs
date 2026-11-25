@@ -107,6 +107,46 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Build_trains_level3_without_each_rated_titles_own_signal()
+    {
+        var model = new CapturingLevel3Model();
+        var (db, build, _, adminId) = await SeedL1Async(level3Model: model);
+        db.Ratings.AddRange(
+            new Rating
+            {
+                ProfileId = adminId,
+                TitleId = 101,
+                Value = RatingValues.Like,
+                RatedAt = DateTime.UtcNow,
+            },
+            new Rating
+            {
+                ProfileId = adminId,
+                TitleId = 103,
+                Value = RatingValues.Dislike,
+                RatedAt = DateTime.UtcNow,
+            });
+        db.RecoStates.Add(new RecoState
+        {
+            Id = RecoState.SingletonId,
+            ProfileId = adminId,
+            Level3Active = true,
+        });
+        await db.SaveChangesAsync();
+
+        await build.BuildAsync(adminId);
+        var firstFeatures = model.Calls[0].Single(example => example.TitleId == 101).Features;
+
+        var target = await db.Ratings.SingleAsync(r => r.TitleId == 101);
+        target.Value = RatingValues.Dislike;
+        await db.SaveChangesAsync();
+        await build.BuildAsync(adminId);
+        var secondFeatures = model.Calls[1].Single(example => example.TitleId == 101).Features;
+
+        secondFeatures.ShouldBe(firstFeatures);
+    }
+
+    [Fact]
     public async Task Build_tmdb_edge_from_like_lifts_related_title()
     {
         var (db, build, _, adminId) = await SeedL1Async(new EmptySettingsStore(new Dictionary<string, string>
@@ -515,6 +555,126 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
         JsonSerializer.Deserialize<Dictionary<string, double>>(state.ProfileJson!)!.Values.ShouldAllBe(weight => weight < 0);
     }
 
+    [Fact]
+    public async Task External_genre_vote_reorders_only_pool_candidates_for_its_profile()
+    {
+        var (db, build, sourceId, profileId) = await SeedL1Async();
+        var disabled = new CatalogSource
+        {
+            ProviderId = (await db.CatalogSources.SingleAsync(s => s.Id == sourceId)).ProviderId,
+            CountryCode = "US", MetadataLanguage = "en-US", IsEnabled = false,
+        };
+        var other = new Profile { Name = "Other", Color = "teal", CreatedAt = DateTime.UtcNow };
+        db.Profiles.Add(other);
+        db.CatalogSources.Add(disabled);
+        db.Titles.Add(Title(999, vote: 7.0, votes: 100, pop: 10));
+        db.TitleGenres.Add(new TitleGenre { TitleId = 999, GenreId = 18 });
+        db.Availabilities.Add(new Availability
+        {
+            TitleId = 999, CatalogSource = disabled, FirstSeenAt = DateTime.UtcNow, LastSeenAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        await build.BuildAsync(profileId);
+        var baseline = await db.Recommendations.AsNoTracking().Where(r => r.ProfileId == profileId)
+            .OrderBy(r => r.Rank).ToListAsync();
+        baseline.Select(r => r.TitleId).ShouldBe([101, 102, 103]);
+        db.Ratings.Add(new Rating
+        {
+            ProfileId = profileId, TitleId = 999, Value = RatingValues.Love, RatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+        await build.BuildAsync(profileId);
+        await build.BuildAsync(other.Id);
+
+        var state = await db.RecoStates.SingleAsync(s => s.ProfileId == profileId);
+        state.EffectiveN.ShouldBe(1.5);
+        // Only one of the three candidates has genre 18. Counting the external drama in DF or N
+        // changes its weight relative to the movie term, which occurs on all three.
+        var genreIdf = 1 + Math.Log(4.0 / 2);
+        var genreWeight = genreIdf / Math.Sqrt(genreIdf * genreIdf + 0.5 * 0.5);
+        JsonSerializer.Deserialize<Dictionary<string, double>>(state.ProfileJson!)![RecoSparse.GenreTerm(18)]
+            .ShouldBe(genreWeight, 1e-6);
+        (await db.RecoStates.SingleAsync(s => s.ProfileId == other.Id)).EffectiveN.ShouldBe(0);
+        var rows = await db.Recommendations
+            .Where(r => r.ProfileId == profileId && r.Version == state.CurrentVersion)
+            .OrderBy(r => r.Rank).ToListAsync();
+        rows.Select(r => r.TitleId).ShouldBe([103, 101, 102]);
+        rows[0].Personal.ShouldBe(1.0);
+        rows[0].ReasonsJson.ShouldContain("T999");
+        rows[0].Prior.ShouldBe(baseline[2].Prior);
+        rows[0].Score.ShouldBe(RecoLearning.FuseScore(rows[0].Prior, 1, RecoLearning.PersonalWeight(1.5)), 1e-9);
+    }
+
+    [Fact]
+    public async Task Build_mixes_only_usable_pool_signals_with_missing_metadata_signals()
+    {
+        var (db, build, _, profileId) = await SeedL1Async();
+        var external = Title(998, vote: 7.0, votes: 100, pop: 10);
+        external.Category = TitleCategories.Series; // no term in the movie-only pool vocabulary
+        db.Titles.Add(external);
+        db.Ratings.Add(new Rating
+        {
+            ProfileId = profileId, TitleId = 101, Value = RatingValues.Like, RatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+        await build.BuildAsync(profileId);
+        var baseline = await db.Recommendations.OrderBy(r => r.Rank)
+            .Select(r => new { r.TitleId, r.Score }).ToListAsync();
+
+        db.Ratings.Add(new Rating
+        {
+            ProfileId = profileId, TitleId = 998, Value = RatingValues.Love, RatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+        await build.BuildAsync(profileId);
+        var state = await db.RecoStates.SingleAsync(s => s.ProfileId == profileId);
+        state.EffectiveN.ShouldBe(1);
+        var actual = await db.Recommendations.OrderBy(r => r.Rank)
+            .Select(r => new { r.TitleId, r.Score }).ToListAsync();
+        actual.ShouldBe(baseline);
+    }
+
+    [Fact]
+    public async Task External_embedding_only_vote_needs_active_compatible_pool_embeddings()
+    {
+        var (db, build, _, profileId) = await SeedL1Async();
+        var external = Title(997, vote: 7, votes: 100, pop: 10);
+        external.Category = TitleCategories.Series;
+        db.Titles.Add(external);
+        db.Favorites.Add(new Favorite { ProfileId = profileId, TitleId = 997, CreatedAt = DateTime.UtcNow });
+        SeedUnitEmbedding(db, 101, [0f, 1f]);
+        SeedUnitEmbedding(db, 102, [0f, 1f]);
+        SeedUnitEmbedding(db, 103, [1f, 0f]);
+        SeedUnitEmbedding(db, 997, [1f, 0f, 0f]);
+        var state = new RecoState
+        {
+            ProfileId = profileId, ModelStatus = RecoModelStatuses.Ready,
+            ModelId = RecoModelCatalog.DefaultModelId, EmbeddingCoverage = 1,
+        };
+        db.RecoStates.Add(state);
+        await db.SaveChangesAsync();
+        await build.BuildAsync(profileId);
+        state.EffectiveN.ShouldBe(0); // wrong dimension
+
+        (await db.TitleEmbeddings.SingleAsync(e => e.TitleId == 997)).Vector =
+            RecoEmbeddingService.FloatsToBytes([1f, 0f]);
+        state.EmbeddingCoverage = 0;
+        await db.SaveChangesAsync();
+        await build.BuildAsync(profileId);
+        state.EffectiveN.ShouldBe(0); // model gated off
+
+        state.EmbeddingCoverage = 1;
+        await db.SaveChangesAsync();
+        await build.BuildAsync(profileId);
+        state.EffectiveN.ShouldBe(0.5);
+        state.ProfileJson.ShouldBeNull(); // no sparse evidence
+        var rows = await db.Recommendations.OrderBy(r => r.Rank).ToListAsync();
+        rows.Select(r => r.TitleId).ShouldBe([103, 101, 102]);
+        rows[0].Personal.ShouldNotBeNull();
+        rows[0].Score.ShouldBeGreaterThan(rows[1].Score);
+    }
+
     private static void SeedUnitEmbedding(PickarrDbContext db, int titleId, float[] vector)
     {
         RecoKnn.L2Normalize(vector);
@@ -630,7 +790,8 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
     }
 
     private async Task<(PickarrDbContext Db, RecoBuildService Build, int EnabledSourceId, int AdminId)> SeedL1Async(
-        ISettingsStore? settings = null)
+        ISettingsStore? settings = null,
+        IRecoLevel3Model? level3Model = null)
     {
         _connection = new SqliteConnection("Data Source=:memory:");
         await _connection.OpenAsync();
@@ -695,7 +856,11 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
         db.Profiles.Add(admin);
         await db.SaveChangesAsync();
 
-        var build = new RecoBuildService(db, new FixedClock(now), settings ?? new EmptySettingsStore(), new RecoLevel3Model());
+        var build = new RecoBuildService(
+            db,
+            new FixedClock(now),
+            settings ?? new EmptySettingsStore(),
+            level3Model ?? new RecoLevel3Model());
         return (db, build, source.Id, admin.Id);
     }
 
@@ -716,6 +881,20 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
     private sealed class FixedClock(DateTime utcNow) : IClock
     {
         public DateTime UtcNow { get; } = utcNow;
+    }
+
+    private sealed class CapturingLevel3Model : IRecoLevel3Model
+    {
+        public List<List<RecoLevel3Example>> Calls { get; } = [];
+
+        public IRecoLevel3Scorer? TryTrain(
+            IReadOnlyList<RecoLevel3Example> examples,
+            int minRatings,
+            int minPerClass)
+        {
+            Calls.Add(examples.Select(example => example with { Features = example.Features.ToArray() }).ToList());
+            return null;
+        }
     }
 
     private sealed class EmptySettingsStore(Dictionary<string, string>? values = null) : ISettingsStore

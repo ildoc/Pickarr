@@ -28,7 +28,15 @@ public sealed class SeriesGuideService(PickarrDbContext db, IMetadataProvider me
         if (seasons.Count == 0)
         {
             var language = await ResolveLanguageAsync(title.Id, sourceId, cancellationToken);
-            var details = await metadata.GetTvAsync(tmdbId, language, cancellationToken);
+            TmdbTitleDetails? details = null;
+            try
+            {
+                details = await metadata.GetTvAsync(tmdbId, language, cancellationToken);
+            }
+            catch (TmdbResourceNotFoundException)
+            {
+                return [];
+            }
             seasons = details?.Seasons?.ToList() ?? [];
             if (seasons.Count > 0)
             {
@@ -65,7 +73,15 @@ public sealed class SeriesGuideService(PickarrDbContext db, IMetadataProvider me
         }
 
         var language = await ResolveLanguageAsync(title.Id, sourceId, cancellationToken);
-        var episodes = await metadata.GetTvSeasonAsync(tmdbId, seasonNumber, language, cancellationToken);
+        IReadOnlyList<TmdbEpisode> episodes;
+        try
+        {
+            episodes = await metadata.GetTvSeasonAsync(tmdbId, seasonNumber, language, cancellationToken);
+        }
+        catch (TmdbResourceNotFoundException)
+        {
+            return [];
+        }
         var ordered = episodes.OrderBy(episode => episode.Number).ToList();
         title.SeasonsJson = SeriesSeasonJson.Write(
             SeriesSeasonJson.WithEpisodes(seasons, seasonNumber, ordered));

@@ -46,6 +46,11 @@ internal static class JobText
     public const string RefreshDescription =
         "Updates TMDB metadata that is already stored and has gone stale.";
 
+    public const string DetailCastName = "Detailed cast";
+
+    public const string DetailCastDescription =
+        "Fills in up to 12 cast members with photos and IMDb links for catalog titles.";
+
     public const string SonarrName = "Sonarr library sync";
 
     public const string SonarrDescription =

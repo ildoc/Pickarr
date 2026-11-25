@@ -174,6 +174,61 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task Detail_returns_structured_cast_and_preserves_historical_fallback()
+    {
+        await using var db = await CreateDbAsync();
+        var source = await SeedCatalogAsync(db);
+        var titles = await SeedTitlesAsync(db, source.Id);
+        var person = new CastPerson
+        {
+            Id = 42,
+            Name = "Second Actor",
+            ProfilePath = "/second.jpg",
+            ImdbId = "nm0000042",
+        };
+        db.CastPeople.Add(person);
+        titles.Movie.CastFetchedAt = DateTime.UtcNow;
+        titles.Movie.CastMembers.Add(new TitleCastMember
+        {
+            Person = person,
+            Position = 1,
+        });
+        titles.Series.CastJson = JsonSerializer.Serialize(new[] { "Historical Actor" });
+        await db.SaveChangesAsync();
+
+        var sut = new TitleQueryService(db, new MemorySettingsStore(), new FixedClock(DateTime.UtcNow));
+
+        var detail = (await sut.GetTitleAsync(titles.Movie.Id, source.Id))!;
+        detail.CastMembers.ShouldHaveSingleItem();
+        detail.CastMembers[0].Name.ShouldBe("Second Actor");
+        detail.CastMembers[0].PhotoUrl.ShouldBe("https://image.tmdb.org/t/p/w185/second.jpg");
+        detail.CastMembers[0].ImdbUrl.ShouldBe("https://www.imdb.com/name/nm0000042/");
+        detail.Cast.ShouldBeEmpty();
+
+        var fallback = (await sut.GetTitleAsync(titles.Series.Id, source.Id))!;
+        fallback.CastMembers.ShouldHaveSingleItem();
+        fallback.CastMembers[0].Name.ShouldBe("Historical Actor");
+        fallback.CastMembers[0].PhotoUrl.ShouldBeNull();
+        fallback.CastMembers[0].ImdbUrl.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Detail_does_not_resurrect_historical_cast_after_empty_fetch()
+    {
+        await using var db = await CreateDbAsync();
+        var source = await SeedCatalogAsync(db);
+        var titles = await SeedTitlesAsync(db, source.Id);
+        titles.Movie.CastJson = JsonSerializer.Serialize(new[] { "Obsolete Actor" });
+        titles.Movie.CastFetchedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var sut = new TitleQueryService(db, new MemorySettingsStore(), new FixedClock(DateTime.UtcNow));
+
+        var detail = (await sut.GetTitleAsync(titles.Movie.Id, source.Id))!;
+        detail.CastMembers.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task Search_is_accent_insensitive_on_localizations_and_original()
     {
         await using var db = await CreateDbAsync();

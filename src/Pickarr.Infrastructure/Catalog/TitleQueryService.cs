@@ -446,6 +446,7 @@ public sealed class TitleQueryService(
             .Include(t => t.Localizations)
             .Include(t => t.TitleGenres).ThenInclude(tg => tg.Genre!).ThenInclude(g => g.Localizations)
             .Include(t => t.Availabilities).ThenInclude(a => a.CatalogSource)
+            .Include(t => t.CastMembers).ThenInclude(member => member.Person)
             .FirstOrDefaultAsync(t => t.Id == titleId, cancellationToken);
         if (title is null)
         {
@@ -512,7 +513,8 @@ public sealed class TitleQueryService(
                     a.LeavingDate))
                 .ToList(),
             arr,
-            ReadCast(title.CastJson));
+            ReadCast(title.CastJson),
+            MapCastMembers(title));
     }
 
     private static IReadOnlyList<string> ReadCast(string? json)
@@ -530,6 +532,28 @@ public sealed class TitleQueryService(
         {
             return [];
         }
+    }
+
+    private static IReadOnlyList<CastMemberDto> MapCastMembers(Title title)
+    {
+        if (title.CastFetchedAt is null)
+        {
+            return ReadCast(title.CastJson)
+                .Select(name => new CastMemberDto(name, null, null))
+                .ToList();
+        }
+
+        return title.CastMembers
+            .Where(member => member.Person is not null && !string.IsNullOrWhiteSpace(member.Person.Name))
+            .OrderBy(member => member.Position)
+            .Take(12)
+            .Select(member => new CastMemberDto(
+                member.Person!.Name,
+                TmdbImageUrls.Build(member.Person.ProfilePath, "w185"),
+                string.IsNullOrWhiteSpace(member.Person.ImdbId)
+                    ? null
+                    : $"https://www.imdb.com/name/{member.Person.ImdbId}/"))
+            .ToList();
     }
 
     public Task<PagedTitlesResult> QueryFavoritesAsync(

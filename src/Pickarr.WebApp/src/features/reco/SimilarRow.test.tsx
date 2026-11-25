@@ -85,10 +85,30 @@ describe('SimilarRow', () => {
 
     wrap(<SimilarRow titleId={10} sourceId={1} />)
 
+    const show = await screen.findByRole('button', { name: 'Show similar titles' })
+    expect(fetchSimilarTitles).not.toHaveBeenCalled()
+    await user.click(show)
     expect(await screen.findByText('Similar titles')).toBeTruthy()
     await waitFor(() => expect(fetchSimilarTitles).toHaveBeenCalledWith(10, 1))
     await user.click(screen.getByRole('button', { name: /Sibling Title/i }))
     expect(screen.getByTestId('loc').textContent).toBe('/catalog?title=99&source=1')
+  })
+
+  it('shows progress, offers a retry on failure, and reports empty results', async () => {
+    const user = userEvent.setup()
+    let reject!: (reason: Error) => void
+    vi.mocked(fetchSimilarTitles)
+      .mockImplementationOnce(() => new Promise((_, fail) => { reject = fail }))
+      .mockResolvedValueOnce({ items: [] })
+    wrap(<SimilarRow titleId={10} sourceId={1} />)
+
+    await user.click(await screen.findByRole('button', { name: 'Show similar titles' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Loading similar titles')
+    reject(new Error('unavailable'))
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load similar titles")
+    await user.click(screen.getByRole('button', { name: 'Show similar titles' }))
+    expect(await screen.findByText('No similar titles found.')).toBeTruthy()
+    expect(fetchSimilarTitles).toHaveBeenCalledTimes(2)
   })
 
   it('renders nothing when recommendations are disabled', async () => {
@@ -99,7 +119,7 @@ describe('SimilarRow', () => {
 
     wrap(<SimilarRow titleId={10} sourceId={1} />, '/catalog?title=10&source=1', disabled)
 
-    expect(screen.queryByText('Similar titles')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Show similar titles' })).toBeNull()
     expect(fetchSimilarTitles).not.toHaveBeenCalled()
   })
 })

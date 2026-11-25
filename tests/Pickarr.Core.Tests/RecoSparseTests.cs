@@ -6,6 +6,23 @@ namespace Pickarr.Core.Tests;
 public sealed class RecoSparseTests
 {
     [Fact]
+    public void External_vectors_use_fixed_pool_idf_and_drop_unknown_terms_before_normalizing()
+    {
+        var pool = new[] { Features(1, genres: [18]), Features(2, genres: [878]) };
+        var baseline = RecoSparse.BuildTitleVectors(pool);
+        var extended = RecoSparse.BuildTitleVectors(pool,
+            [Features(3, genres: [18], keywords: [999]), Features(4, category: "series", language: null, year: null)]);
+
+        foreach (var term in baseline[1].Weights.Keys)
+        {
+            extended[1].Weights[term].ShouldBe(baseline[1].Weights[term]);
+            extended[3].Weights[term].ShouldBe(baseline[1].Weights[term]);
+        }
+        extended[3].Weights.ContainsKey(RecoSparse.KeywordTerm(999)).ShouldBeFalse();
+        extended[4].IsEmpty.ShouldBeTrue();
+    }
+
+    [Fact]
     public void Sci_fi_likes_rank_other_sci_fi_above_drama()
     {
         var pool = new[]

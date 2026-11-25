@@ -94,6 +94,11 @@ public sealed class ScheduleReconciler(
             j => j.ExecuteAsync(false, CancellationToken.None),
             Cron.Daily());
 
+        recurringJobs.AddOrUpdate<DetailCastJob>(
+            DetailCastJob.RecurringJobId,
+            j => j.ExecuteAsync(false, CancellationToken.None),
+            Cron.Hourly());
+
         recurringJobs.AddOrUpdate<RecoFeatureJob>(
             RecoFeatureJob.RecurringJobId,
             j => j.ExecuteAsync(false, CancellationToken.None),

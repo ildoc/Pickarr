@@ -63,11 +63,13 @@ Title read paths (catalog, list, ratings, detail, recommendations, onboarding, a
 | Area | Examples |
 | --- | --- |
 | Catalog | Incremental sync, full sync, credit budget, removal confirmation |
-| Metadata | TMDB enrichment backlog |
+| Metadata | TMDB enrichment backlog, detailed cast backfill and 30-day renewal |
 | Arr | Periodic library sync; optional webhook intake |
 | Recommendations | Embedding encode, reco build, offline eval (ml queue) |
 
 Schedules reconcile when relevant settings change. Hangfire storage defaults to SQLite under the data path; tests often use Memory.
+
+`DetailCastJob` runs hourly and can be triggered from the admin Jobs page. It processes at most 20 batches of 50 titles per execution, uses a Hangfire concurrency lock, and records processed, updated, empty, partial, and failed outcomes in `SyncRuns`. The job stores shared person records and ordered title associations; it does not modify recommendation credits.
 
 Before Hangfire initialization, a jobs-only copy (including WAL/SHM/rollback journal) undergoes SQLite `integrity_check`, catching index corruption that otherwise surfaces later during schedule reconciliation. Confirmed corruption archives the original jobs files and recreates persistent storage; schedules are reapplied from `Pickarr.db`. Personal/catalog data and encryption keys are never reset. Other storage errors propagate from the check without triggering recovery.
 

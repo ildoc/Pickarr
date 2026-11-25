@@ -6,6 +6,23 @@ namespace Pickarr.Core.Tests;
 public sealed class RecoSignalsTests
 {
     [Fact]
+    public void Signals_without_usable_features_are_reported_but_excluded_from_effective_n()
+    {
+        var result = RecoSignals.Compute(
+        [
+            new RecoSignalTitleFacts(1, "Like", IsFavorite: false, HasSuccessfulArrAdd: false, IsDownloaded: false),
+            new RecoSignalTitleFacts(2, "Love", IsFavorite: false, HasSuccessfulArrAdd: false, IsDownloaded: false),
+            new RecoSignalTitleFacts(3, null, IsFavorite: true, HasSuccessfulArrAdd: false, IsDownloaded: false),
+        ],
+            usableTitleIds: new HashSet<int> { 1 });
+
+        result.EffectiveN.ShouldBe(1.0);
+        result.UsableSignalCount.ShouldBe(1);
+        result.MissingFeatureSignalCount.ShouldBe(2);
+        result.Signals.Keys.ShouldBe([1]);
+    }
+
+    [Fact]
     public void Explicit_like_overrides_implicits_and_sets_n_eff()
     {
         var result = RecoSignals.Compute(

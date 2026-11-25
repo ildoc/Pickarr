@@ -25,16 +25,19 @@ Type and genre options come from titles in the current scope. Sonarr and Radarr 
 - Free plan limits: about 2 500 credits/month and at most **3** distinct countries (several providers in one country count once).
 - Cached catalog data should be refreshed within Watchmode’s free-plan cache window; the UI warns when a source looks stale.
 - Titles imported with an IMDb id but no TMDB id stay in the enrichment queue (`Pending`) so TMDB `/find` can fill posters and metadata; duplicate Watchmode rows that share an IMDb id are merged into one title.
+- Detailed cast is filled asynchronously from TMDB. Existing names remain visible while a title is waiting for its first cast fetch; an explicitly fetched empty cast is shown as empty rather than restoring stale names. The hourly cast job processes bounded batches and refreshes cast after 30 days.
 
 ## Title detail
 
 Opening a title keeps you on the route that opened it. The detail dialog shows:
 
 - Metadata (overview, genres, scores, external links)
+- Up to 12 cast members in stable order, with TMDB photos or accessible placeholders and IMDb links when available
 - Availability on the current source (added / leaving / removed)
 - Shared Arr library status (monitor, download progress, seasons for series)
 - Actions: favorite, rate, Add / Delete, Search now, Refresh status
-- **Similar** titles when recommendations are enabled (series seasons newest first; episodes oldest first; adding a series sends only selected seasons)
+- When recommendations are enabled, select **Show similar titles** to start a search. A spinner shows that the search is running; opening a title does not start it automatically.
+- Series seasons are newest first; episodes oldest first. Adding a series sends only selected seasons.
 
 ## Profiles (household)
 
@@ -63,7 +66,7 @@ Explicit votes on a title (per profile): **Love**, **Like**, **Dislike**, **Not 
 
 Votes are highlighted immediately. While a vote is saving, that title's rating controls are temporarily disabled, including in an open detail dialog. Failed saves restore the previous vote and show an error so you can retry. Recommended cards stay visible while saving, then briefly show the saved vote before fading out.
 
-**For you** (`/for-you`) shows local recommendations over titles already in enabled catalogs:
+**For you** (`/for-you`) shows local recommendations over titles already in enabled catalogs. Your profile can still learn from votes on titles outside those catalogs when Pickarr has matching metadata or a usable local embedding. Those titles do not become recommendations.
 
 - Default filter: **All** providers and countries (union of enabled sources). Provider and country each offer an All option so the cross-catalog view is explicit.
 - Choosing a concrete provider + country narrows the list to that source immediately (no search box on this page).

@@ -183,6 +183,12 @@ public sealed class CreditBudgetServiceTests
         public Task SucceedAsync(Guid id, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task PartiallySucceedAsync(
+            Guid id,
+            string? errorMessage = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task FailAsync(Guid id, string errorMessage, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 

@@ -25,12 +25,23 @@ public static class RecoKnn
         int k = DefaultK,
         double gamma = DefaultGamma,
         double simMin = DefaultSimMin,
+        int maxSignals = DefaultMaxSignals) =>
+        ScoreCandidates(embeddings, embeddings, signals, k, gamma, simMin, maxSignals);
+
+    /// <summary>Score only the candidates, using a separate vector lookup for signalled neighbours.</summary>
+    public static IReadOnlyDictionary<int, double> ScoreCandidates(
+        IReadOnlyDictionary<int, float[]> candidates,
+        IReadOnlyDictionary<int, float[]> neighbourEmbeddings,
+        IReadOnlyDictionary<int, double> signals,
+        int k = DefaultK,
+        double gamma = DefaultGamma,
+        double simMin = DefaultSimMin,
         int maxSignals = DefaultMaxSignals)
     {
-        var result = new Dictionary<int, double>(embeddings.Count);
-        if (embeddings.Count == 0 || signals.Count == 0)
+        var result = new Dictionary<int, double>(candidates.Count);
+        if (candidates.Count == 0 || signals.Count == 0)
         {
-            foreach (var id in embeddings.Keys)
+            foreach (var id in candidates.Keys)
             {
                 result[id] = 0; // neutral in [-1,1] → 0.5 after ToUnitInterval
             }
@@ -39,8 +50,8 @@ public static class RecoKnn
         }
 
         var signalledQuery = signals
-            .Where(kv => kv.Value != 0 && embeddings.ContainsKey(kv.Key))
-            .Select(kv => (TitleId: kv.Key, Signal: kv.Value, Vector: embeddings[kv.Key]));
+            .Where(kv => kv.Value != 0 && neighbourEmbeddings.ContainsKey(kv.Key))
+            .Select(kv => (TitleId: kv.Key, Signal: kv.Value, Vector: neighbourEmbeddings[kv.Key]));
         var signalled = maxSignals > 0 && signals.Count > maxSignals
             ? signalledQuery
                 .OrderByDescending(s => Math.Abs(s.Signal))
@@ -49,7 +60,7 @@ public static class RecoKnn
                 .ToList()
             : signalledQuery.ToList();
 
-        foreach (var (titleId, vector) in embeddings)
+        foreach (var (titleId, vector) in candidates)
         {
             var neighbours = new List<(double Sim, double Signal)>(signalled.Count);
             foreach (var s in signalled)
@@ -176,6 +187,43 @@ public static class RecoKnn
             .OrderByDescending(s => s.Similarity)
             .ThenBy(s => s.TitleId)
             .Take(limit)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Merge exact embedding matches with sparse fallback matches for candidates missing embeddings.
+    /// Embedding cosine is normalized from [-1,1] to [0,1]; sparse cosine is already [0,1].
+    /// Sparse fallback does not replace or duplicate an embedding match.
+    /// </summary>
+    public static IReadOnlyList<(int TitleId, double Similarity)> MergeSimilarityFallback(
+        IReadOnlyList<(int TitleId, double Similarity)> embeddingMatches,
+        IReadOnlyList<(int TitleId, double Similarity)> sparseMatches,
+        IReadOnlySet<int> embeddingCandidateIds,
+        IReadOnlySet<int> excludeTitleIds,
+        int limit)
+    {
+        var scores = new Dictionary<int, double>();
+        foreach (var (titleId, similarity) in embeddingMatches)
+        {
+            if (!excludeTitleIds.Contains(titleId))
+            {
+                scores[titleId] = Math.Clamp((similarity + 1.0) / 2.0, 0, 1);
+            }
+        }
+
+        foreach (var (titleId, similarity) in sparseMatches)
+        {
+            if (!excludeTitleIds.Contains(titleId) && !embeddingCandidateIds.Contains(titleId))
+            {
+                scores[titleId] = Math.Clamp(similarity, 0, 1);
+            }
+        }
+
+        return scores
+            .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => kv.Key)
+            .Take(Math.Max(0, limit))
+            .Select(kv => (kv.Key, kv.Value))
             .ToList();
     }
 }

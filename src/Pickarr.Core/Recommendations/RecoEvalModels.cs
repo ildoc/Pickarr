@@ -15,7 +15,14 @@ public sealed record RecoEvalReportDto(
     double? LikeVsDislikeAucCombined,
     bool Level3Active,
     string? Level3SkipReason,
-    IReadOnlyDictionary<string, double>? SuggestedDefaults);
+    IReadOnlyDictionary<string, double>? SuggestedDefaults,
+    int? NotInterestedCount = null,
+    int? UnratedPoolCount = null,
+    int? UnratedSamplePerRetrievalFold = null,
+    int? EvaluatedPositiveCount = null,
+    int? EvaluatedDislikeCount = null,
+    int? EvaluatedNotInterestedCount = null,
+    double? LikeVsNotInterestedAucCombined = null);
 
 public sealed record RecoEvalScoreBundle(
     double Prior,

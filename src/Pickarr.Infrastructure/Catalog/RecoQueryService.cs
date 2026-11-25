@@ -345,89 +345,13 @@ public sealed class RecoQueryService(
         return new RecommendationsPageDto(version, stage, page, pageSize, total, items);
     }
 
-    /// <summary>
-    /// Prefer same-genre neighbours when available; otherwise the enabled pool.
-    /// Caps brute-force cosine work for large catalogs (NFR-REC-01 / SP-R3).
-    /// </summary>
-    private async Task<HashSet<int>> NarrowSimilarCandidatesAsync(
-        int queryTitleId,
-        HashSet<int> enabledPoolSet,
-        HashSet<int> exclude,
-        CancellationToken cancellationToken)
-    {
-        const int maxCandidates = 120;
-        var queryGenreIds = await db.TitleGenres.AsNoTracking()
-            .Where(tg => tg.TitleId == queryTitleId)
-            .Select(tg => tg.GenreId)
-            .ToListAsync(cancellationToken);
-
-        List<int> rawIds;
-        if (queryGenreIds.Count > 0)
-        {
-            // Load co-genre ids without embedding enabledPool into SQL IN (NFR-REC-01).
-            rawIds = await db.TitleGenres.AsNoTracking()
-                .Where(tg => queryGenreIds.Contains(tg.GenreId))
-                .Select(tg => tg.TitleId)
-                .Distinct()
-                .ToListAsync(cancellationToken);
-        }
-        else
-        {
-            rawIds = enabledPoolSet.ToList();
-        }
-
-        var narrowed = new List<int>(Math.Min(maxCandidates, rawIds.Count));
-        foreach (var id in rawIds)
-        {
-            if (id == queryTitleId || exclude.Contains(id) || !enabledPoolSet.Contains(id))
-            {
-                continue;
-            }
-
-            narrowed.Add(id);
-            if (narrowed.Count >= maxCandidates)
-            {
-                break;
-            }
-        }
-
-        if (narrowed.Count >= 20 || queryGenreIds.Count == 0)
-        {
-            return narrowed.ToHashSet();
-        }
-
-        // Genre filter too tight — fall back to a capped enabled pool in memory.
-        narrowed.Clear();
-        foreach (var id in enabledPoolSet)
-        {
-            if (exclude.Contains(id))
-            {
-                continue;
-            }
-
-            narrowed.Add(id);
-            if (narrowed.Count >= maxCandidates)
-            {
-                break;
-            }
-        }
-
-        return narrowed.ToHashSet();
-    }
-
     private async Task<IReadOnlyList<(int TitleId, double Similarity)>> QuerySimilarSparseAsync(
         int queryTitleId,
         HashSet<int> enabledPoolSet,
-        HashSet<int> exclude,
-        int limit,
+        HashSet<int> sparseCandidateIds,
         CancellationToken cancellationToken)
     {
-        var candidateIds = await NarrowSimilarCandidatesAsync(
-            queryTitleId,
-            enabledPoolSet,
-            exclude,
-            cancellationToken);
-        var poolIdSet = new HashSet<int>(candidateIds) { queryTitleId };
+        var poolIdSet = new HashSet<int>(enabledPoolSet) { queryTitleId };
 
         var featureTitles = await db.Titles.AsNoTracking()
             .Where(t => poolIdSet.Contains(t.Id))
@@ -497,16 +421,12 @@ public sealed class RecoQueryService(
             return [];
         }
 
-        var enabledPoolVectors = vectors
-            .Where(kv => enabledPoolSet.Contains(kv.Key))
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
-
-        return RecoSparse.TopSimilar(
-            queryVector,
-            enabledPoolVectors,
-            limit,
-            minSimilarity: 0.01,
-            excludeTitleIds: exclude);
+        // IDF belongs to the whole corpus, not the eligible or missing-embedding subset.
+        return vectors
+            .Where(kv => sparseCandidateIds.Contains(kv.Key))
+            .Select(kv => (TitleId: kv.Key, Similarity: Math.Clamp(RecoSparse.Cosine(queryVector, kv.Value), 0, 1)))
+            .Where(match => match.Similarity >= 0.01)
+            .ToList();
     }
 
     private async Task<Dictionary<(int, int), double>> BuildSimilarityLookupAsync(
@@ -959,7 +879,9 @@ public sealed class RecoQueryService(
             }
         }
 
-        IReadOnlyList<(int TitleId, double Similarity)> similar;
+        var sparseCandidateIds = new HashSet<int>(enabledPoolSet);
+        sparseCandidateIds.ExceptWith(exclude);
+        var local = new List<(int TitleId, double Similarity)>();
         var state = await RecoProfileStates.FindAdminNoTrackingAsync(db, cancellationToken);
         var modelId = state?.ModelId ?? RecoModelCatalog.DefaultModelId;
 
@@ -971,47 +893,41 @@ public sealed class RecoQueryService(
 
         if (queryEmbRow is not null)
         {
-            var candidateIds = await NarrowSimilarCandidatesAsync(
-                query.TitleId,
-                enabledPoolSet,
-                exclude,
-                cancellationToken);
             var embRows = await db.TitleEmbeddings.AsNoTracking()
-                .Where(e => e.ModelId == modelId && candidateIds.Contains(e.TitleId))
+                .Where(e => e.ModelId == modelId && sparseCandidateIds.Contains(e.TitleId))
                 .Select(e => new { e.TitleId, e.Vector })
                 .ToListAsync(cancellationToken);
-            var embMap = embRows.ToDictionary(
-                e => e.TitleId,
-                e => RecoEmbeddingService.BytesToFloats(e.Vector));
-            similar = RecoKnn.TopSimilar(
-                RecoEmbeddingService.BytesToFloats(queryEmbRow.Vector),
-                embMap,
-                limit,
-                minSimilarity: 0.01,
-                excludeTitleIds: exclude);
+            var queryVector = RecoEmbeddingService.BytesToFloats(queryEmbRow.Vector);
+            foreach (var row in embRows)
+            {
+                sparseCandidateIds.Remove(row.TitleId);
+                var cosine = RecoKnn.Dot(queryVector, RecoEmbeddingService.BytesToFloats(row.Vector));
+                if (cosine >= 0.01)
+                {
+                    local.Add((row.TitleId, Math.Clamp((cosine + 1.0) / 2.0, 0, 1)));
+                }
+            }
         }
-        else
+
+        if (sparseCandidateIds.Count > 0)
         {
-            similar = await QuerySimilarSparseAsync(
+            local.AddRange(await QuerySimilarSparseAsync(
                 query.TitleId,
                 enabledPoolSet,
-                exclude,
-                limit,
-                cancellationToken);
+                sparseCandidateIds,
+                cancellationToken));
         }
 
         var tmdbOutgoing = await db.TitleTmdbRecommendations.AsNoTracking()
             .Where(e => e.SourceTitleId == query.TitleId && enabledPoolSet.Contains(e.RelatedTitleId))
             .Select(e => new { e.RelatedTitleId, e.Rank })
             .ToListAsync(cancellationToken);
-        if (tmdbOutgoing.Count > 0)
-        {
-            similar = RecoTmdbBoost.MergeSimilar(
-                similar,
-                tmdbOutgoing.Select(e => (e.RelatedTitleId, e.Rank)).ToList(),
-                limit,
-                exclude);
-        }
+        // A graph edge can promote a candidate below either local top-k.
+        var similar = RecoTmdbBoost.MergeSimilar(
+            local,
+            tmdbOutgoing.Select(e => (e.RelatedTitleId, e.Rank)).ToList(),
+            limit,
+            exclude);
 
         if (similar.Count == 0)
         {

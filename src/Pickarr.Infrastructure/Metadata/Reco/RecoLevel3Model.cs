@@ -13,7 +13,11 @@ public sealed class RecoLevel3Model : IRecoLevel3Model
         int minRatings,
         int minPerClass)
     {
-        if (examples.Count < minRatings)
+        if (examples.Count < minRatings
+            || examples.Select(example => example.TitleId).Distinct().Count() != examples.Count
+            || examples.Any(example =>
+                example.Features.Length != RecoLevel3.FeatureCount
+                || example.Features.Any(value => !float.IsFinite(value))))
         {
             return null;
         }

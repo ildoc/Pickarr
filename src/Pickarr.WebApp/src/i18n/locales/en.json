@@ -346,6 +346,9 @@
       "explore": "Explore"
     },
     "similarHeading": "Similar titles",
+    "showSimilar": "Show similar titles",
+    "similarError": "Couldn't load similar titles. Try again.",
+    "similarEmpty": "No similar titles found.",
     "similarLoading": "Loading similar titles…",
     "tasteHeading": "Teach your taste",
     "tasteIntro": "Rate titles you know from your enabled catalogs. Skip the rest, or load a new batch if these are unfamiliar.",
@@ -364,6 +367,7 @@
     "availableFrom": "Available since {{date}}",
     "availableNow": "Available",
     "cast": "Cast",
+    "openImdbFor": "Open IMDb page for {{name}}",
     "leavingOn": "Leaving on {{date}}",
     "removedOn": "Removed on {{date}}",
     "library": "Library",

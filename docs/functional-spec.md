@@ -171,6 +171,8 @@ Priority (MoSCoW): **M** = Must (MVP), **S** = Should, **C** = Could, **W** = Wo
 | FR-MET-07 | The interface shows the **attributions** required: Watchmode.com (with link) and TMDB (logo and wording "This product uses the TMDB API but is not endorsed or certified by TMDB"). | M |
 | FR-MET-08 | A title whose enrichment fails is still shown with the minimum data (title and year from Watchmode) and tried again later. | S |
 
+The title detail may also show up to 12 ordered cast members. Cast photos and IMDb person links are optional; the cast is loaded asynchronously and does not block opening the detail dialog. Historical names remain a compatibility fallback until the first detail-cast fetch completes, while an explicitly fetched empty result remains empty.
+
 ### 4.3 Home e navigazione (FR-UI)
 
 | ID | Requirement | PRI |

@@ -46,7 +46,9 @@ public static class DependencyInjection
         services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<IApiUsageSyncRunAccessor, ApiUsageSyncRunAccessor>();
         services.AddDbContext<PickarrDbContext>(options =>
-            options.UseSqlite($"Data Source={dbPath}"));
+            // Catalog pools can exceed SQLite's host-parameter limit; send each ID set as one JSON array.
+            options.UseSqlite($"Data Source={dbPath}", sqlite =>
+                sqlite.UseParameterizedCollectionMode(ParameterTranslationMode.Parameter)));
 
         services.AddDataProtection()
             .PersistKeysToFileSystem(new DirectoryInfo(keysPath))
@@ -116,6 +118,7 @@ public static class DependencyInjection
         services.AddTransient<LeavingSyncJob>();
         services.AddTransient<EnrichmentJob>();
         services.AddTransient<MetadataRefreshJob>();
+        services.AddTransient<DetailCastJob>();
         services.AddTransient<ArrSyncJob>();
         services.AddTransient<RecoBuildJob>();
         services.AddTransient<RecoEvalJob>();
@@ -125,6 +128,7 @@ public static class DependencyInjection
         services.AddScoped<ScheduleReconciler>();
         services.AddSingleton<ScheduleReconcilerStub>();
         services.AddScoped<IEnrichmentService, EnrichmentService>();
+        services.AddScoped<IDetailCastService, DetailCastService>();
         services.AddScoped<ISeriesGuide, SeriesGuideService>();
         services.AddScoped<ITmdbImageUrlBuilder, TmdbImageUrlBuilder>();
         services.AddPickarrHangfire(configuration, dataPath);

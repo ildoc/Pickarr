@@ -1,39 +1,59 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { fetchSimilarTitles } from '../../api/recommendations'
 import { fetchSettings } from '../../api/settings'
 
-export function SimilarRow({
-  titleId,
-  sourceId,
-}: {
+type SimilarProps = {
   titleId: number
   sourceId: number | null
-}) {
+}
+
+export function SimilarRow(props: SimilarProps) {
+  const settings = useQuery({ queryKey: ['settings'], queryFn: fetchSettings })
+  if (!settings.data?.reco.enabled) return null
+  return <SimilarRequest key={`${props.titleId}:${props.sourceId}`} {...props} />
+}
+
+function SimilarRequest({ titleId, sourceId }: SimilarProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [params] = useSearchParams()
-  const settings = useQuery({ queryKey: ['settings'], queryFn: fetchSettings })
-  const recoEnabled = settings.data?.reco.enabled !== false
+  const [requested, setRequested] = useState(false)
 
   const similar = useQuery({
     queryKey: ['similar', titleId, sourceId],
     queryFn: () => fetchSimilarTitles(titleId, sourceId),
-    enabled: recoEnabled,
+    enabled: false,
+    retry: false,
   })
 
-  if (!recoEnabled) return null
-  if (similar.isLoading) {
+  if (!requested || similar.isError) {
     return (
-      <p className="border-t border-white/10 px-6 pb-6 pt-4 text-sm text-[var(--muted)]">
+      <div className="space-y-2 border-t border-white/10 px-6 pb-6 pt-4">
+        {requested && <p role="alert">{t('reco.similarError')}</p>}
+        <button type="button" className="rounded-md border border-white/20 px-3 py-2 text-sm"
+          onClick={() => {
+            setRequested(true)
+            void similar.refetch()
+          }}>
+          {t('reco.showSimilar')}
+        </button>
+      </div>
+    )
+  }
+  if (similar.isFetching || !similar.data) {
+    return (
+      <p role="status" className="flex items-center gap-2 border-t border-white/10 px-6 pb-6 pt-4 text-sm text-[var(--muted)]">
+        <span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-current border-t-transparent motion-safe:animate-spin" />
         {t('reco.similarLoading')}
       </p>
     )
   }
-  if (similar.isError || !similar.data || similar.data.items.length === 0) {
-    return null
+  if (similar.data.items.length === 0) {
+    return <p role="status" className="px-6 pb-6 pt-4 text-sm text-[var(--muted)]">{t('reco.similarEmpty')}</p>
   }
 
   const openTitle = (id: number) => {

@@ -9,6 +9,9 @@
     <Project Path="tests/Pickarr.Infrastructure.Tests/Pickarr.Infrastructure.Tests.csproj" />
     <Project Path="tests/Pickarr.Integration.Tests/Pickarr.Integration.Tests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Pickarr.RecoBench/Pickarr.RecoBench.csproj" />
+  </Folder>
   <Project Path="docker-compose.dcproj">
     <Build />
   </Project>

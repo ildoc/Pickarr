@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { refreshTitleArr, setTitleSeasonMonitoring } from '../../api/arr'
 import { fetchTitle } from '../../api/catalog'
+import type { CastMember } from '../../api/types'
 import { categoryLabelKey, formatDate, formatRuntime, formatYear } from '../../lib/format'
 import { AddToArrDialog } from '../arr/AddToArrDialog'
 import { DeleteFromArrDialog } from '../arr/DeleteFromArrDialog'
@@ -17,6 +18,21 @@ import { WatchedButton } from '../watched/WatchedButton'
 import { ArrStatusBadge } from './ArrStatusBadge'
 import { SeasonTable } from './SeasonTable'
 import { SeriesSeasons } from './SeriesSeasons'
+
+function getCastMembers(castMembers: CastMember[] | undefined, legacyCast: string[] | undefined) {
+  const source = castMembers ?? (legacyCast ?? []).map((name) => ({
+    name,
+    photoUrl: null,
+    imdbUrl: null,
+  }))
+  const seen = new Set<string>()
+  return source.filter((member) => {
+    const key = member.name.trim().toLocaleLowerCase()
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).slice(0, 12)
+}
 
 export function TitleDialog({
   titleId,
@@ -74,6 +90,9 @@ export function TitleDialog({
       setTitleSeasonMonitoring(titleId, seasonNumber, monitored),
     onSuccess: invalidateTitle,
   })
+  const castMembers = detail.data
+    ? getCastMembers(detail.data.castMembers, detail.data.cast)
+    : []
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -218,60 +237,6 @@ export function TitleDialog({
                 </div>
               </div>
 
-              {detail.data.genres.length > 0 && (
-                <p className="text-sm text-[var(--muted)]">
-                  {t('title.genres')}: {detail.data.genres.map((g) => g.name).join(', ')}
-                </p>
-              )}
-
-              {detail.data.ratings.tmdb != null && (
-                <p className="text-sm">
-                  {t('title.ratingTmdb')}: {detail.data.ratings.tmdb.toFixed(1)}
-                </p>
-              )}
-
-              {detail.data.cast && detail.data.cast.length > 0 && (
-                <p className="text-sm text-[var(--muted)]">
-                  {t('title.cast')}: {detail.data.cast.join(', ')}
-                </p>
-              )}
-
-              {detail.data.category === 'series' && (
-                <SeriesSeasons titleId={detail.data.id} sourceId={sourceId} />
-              )}
-
-              {detail.data.overview && (
-                <section>
-                  <h3 className="mb-1 text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
-                    {t('title.overview')}
-                  </h3>
-                  <p className="leading-relaxed text-[var(--text)]/90">{detail.data.overview}</p>
-                </section>
-              )}
-
-              <section>
-                <h3 className="mb-1 text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
-                  {t('title.availability')}
-                </h3>
-                <ul className="space-y-1 text-sm">
-                  {detail.data.availability.map((a) => (
-                    <li key={a.sourceId}>
-                      {a.countryCode}:{' '}
-                      {a.removedAt
-                        ? t('title.removedOn', { date: formatDate(a.removedAt, i18n.language) })
-                        : a.addedAt
-                          ? t('title.availableFrom', {
-                              date: formatDate(a.addedAt, i18n.language),
-                            })
-                          : t('title.availableNow')}
-                      {a.leavingDate
-                        ? ` · ${t('title.leavingOn', { date: a.leavingDate })}`
-                        : ''}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-
               {detail.data.arr.addBlockedReason !== 'notConfigured' && (
                 <>
                   <section className="space-y-3 rounded-lg border border-white/10 bg-[var(--surface-2)] p-4">
@@ -367,6 +332,114 @@ export function TitleDialog({
                   />
                 </>
               )}
+
+              {detail.data.genres.length > 0 && (
+                <p className="text-sm text-[var(--muted)]">
+                  {t('title.genres')}: {detail.data.genres.map((g) => g.name).join(', ')}
+                </p>
+              )}
+
+              {detail.data.ratings.tmdb != null && (
+                <p className="text-sm">
+                  {t('title.ratingTmdb')}: {detail.data.ratings.tmdb.toFixed(1)}
+                </p>
+              )}
+
+              {castMembers.length > 0 && (
+                <section aria-labelledby="title-dialog-cast">
+                  <h3
+                    id="title-dialog-cast"
+                    className="mb-2 text-sm font-medium uppercase tracking-wide text-[var(--muted)]"
+                  >
+                    {t('title.cast')}
+                  </h3>
+                  <div
+                    className="flex gap-3 overflow-x-auto pb-1"
+                    role="list"
+                    aria-label={t('title.cast')}
+                  >
+                    {castMembers.map((member) => {
+                      const card = (
+                        <>
+                          {member.photoUrl ? (
+                            <img
+                              src={member.photoUrl}
+                              alt={member.name}
+                              className="h-20 w-20 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div
+                              aria-hidden="true"
+                              className="flex h-20 w-20 items-center justify-center rounded-full bg-white/10 text-xl text-[var(--muted)]"
+                            >
+                              ?
+                            </div>
+                          )}
+                          <span className="max-w-24 text-center text-xs">{member.name}</span>
+                        </>
+                      )
+
+                      return (
+                        <div
+                          key={member.name}
+                          role="listitem"
+                          className="flex min-w-24 flex-col items-center gap-1"
+                        >
+                          {member.imdbUrl ? (
+                            <a
+                              href={member.imdbUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={t('title.openImdbFor', { name: member.name })}
+                              className="flex flex-col items-center gap-1 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                            >
+                              {card}
+                            </a>
+                          ) : (
+                            card
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {detail.data.category === 'series' && (
+                <SeriesSeasons titleId={detail.data.id} sourceId={sourceId} />
+              )}
+
+              {detail.data.overview && (
+                <section>
+                  <h3 className="mb-1 text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
+                    {t('title.overview')}
+                  </h3>
+                  <p className="leading-relaxed text-[var(--text)]/90">{detail.data.overview}</p>
+                </section>
+              )}
+
+              <section>
+                <h3 className="mb-1 text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
+                  {t('title.availability')}
+                </h3>
+                <ul className="space-y-1 text-sm">
+                  {detail.data.availability.map((a) => (
+                    <li key={a.sourceId}>
+                      {a.countryCode}:{' '}
+                      {a.removedAt
+                        ? t('title.removedOn', { date: formatDate(a.removedAt, i18n.language) })
+                        : a.addedAt
+                          ? t('title.availableFrom', {
+                              date: formatDate(a.addedAt, i18n.language),
+                            })
+                          : t('title.availableNow')}
+                      {a.leavingDate
+                        ? ` · ${t('title.leavingOn', { date: a.leavingDate })}`
+                        : ''}
+                    </li>
+                  ))}
+                </ul>
+              </section>
 
               <section className="flex flex-wrap gap-3 text-sm">
                 {detail.data.links.tmdb && (

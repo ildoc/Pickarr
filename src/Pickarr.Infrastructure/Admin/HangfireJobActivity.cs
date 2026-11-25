@@ -178,6 +178,11 @@ internal static class HangfireJobKeyMapper
             return MetadataRefreshJob.RecurringJobId;
         }
 
+        if (name == nameof(DetailCastJob))
+        {
+            return DetailCastJob.RecurringJobId;
+        }
+
         if (name == nameof(ArrSyncJob))
         {
             return job.Method.Name switch

@@ -46,6 +46,67 @@ public sealed class EnrichmentServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Tmdb_maps_detail_cast_separately_from_reco_credits()
+    {
+        await SeedTitleAsync(550, "movie", "en-US");
+        var cast = Enumerable.Range(0, 13)
+            .Select(i => new
+            {
+                id = 1000 + i,
+                name = $"Actor {i}",
+                order = i,
+                profile_path = i == 0 ? "/actor0.jpg" : (string?)null,
+            })
+            .ToArray();
+        var movie = JsonSerializer.Serialize(new
+        {
+            id = 550,
+            title = "Fight Club",
+            release_date = "1999-10-15",
+            genres = Array.Empty<object>(),
+            credits = new { cast, crew = Array.Empty<object>() },
+        });
+        _server.Given(Request.Create().WithPath("/3/movie/550").UsingGet())
+            .RespondWith(Json(movie));
+
+        var provider = _services!.GetRequiredService<IMetadataProvider>();
+        var details = await provider.GetMovieAsync(550, "en-US");
+
+        details.ShouldNotBeNull();
+        details.DetailCast.ShouldNotBeNull();
+        details.DetailCast!.Count.ShouldBe(12);
+        details.DetailCast[0].PersonId.ShouldBe(1000);
+        details.DetailCast[0].Name.ShouldBe("Actor 0");
+        details.DetailCast[0].ProfilePath.ShouldBe("/actor0.jpg");
+        details.DetailCast[11].PersonId.ShouldBe(1011);
+        details.DetailCast[11].ProfilePath.ShouldBeNull();
+        details.Credits.ShouldNotBeNull();
+        details.Credits!.Count(c => c.Role == "Cast").ShouldBe(5);
+    }
+
+    [Fact]
+    public async Task Tmdb_person_external_ids_distinguishes_missing_and_temporary_errors()
+    {
+        await SeedTitleAsync(550, "movie", "en-US");
+        _server.Given(Request.Create().WithPath("/3/person/100/external_ids").UsingGet())
+            .RespondWith(Json("""{"imdb_id":"nm1234567"}"""));
+        _server.Given(Request.Create().WithPath("/3/person/404/external_ids").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(404));
+        _server.Given(Request.Create().WithPath("/3/person/500/external_ids").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(503));
+
+        var provider = _services!.GetRequiredService<IMetadataProvider>();
+        var found = await provider.GetPersonExternalIdsAsync(100);
+        var missing = await provider.GetPersonExternalIdsAsync(404);
+
+        found.ShouldNotBeNull();
+        found!.ImdbId.ShouldBe("nm1234567");
+        missing.ShouldBeNull();
+        await Should.ThrowAsync<HttpRequestException>(
+            () => provider.GetPersonExternalIdsAsync(500));
+    }
+
+    [Fact]
     public async Task Enrich_movie_sets_Ready_localizations_and_records_ApiUsage()
     {
         var movie = await File.ReadAllTextAsync(Path.Combine(_fixtureRoot, "movie-550-en.json"));

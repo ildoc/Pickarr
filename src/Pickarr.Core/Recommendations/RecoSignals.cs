@@ -32,7 +32,8 @@ public static class RecoSignals
     public static RecoSignalResult Compute(
         IReadOnlyList<RecoSignalTitleFacts> titles,
         RecoSignalWeights? weights = null,
-        bool useImplicit = true)
+        bool useImplicit = true,
+        IReadOnlySet<int>? usableTitleIds = null)
     {
         var w = weights ?? DefaultWeights;
         var signals = new Dictionary<int, double>();
@@ -79,8 +80,24 @@ public static class RecoSignals
             signals[title.TitleId] = Math.Clamp(implicitSum, 0, 1);
         }
 
-        var nEff = signals.Values.Sum(Math.Abs);
-        return new RecoSignalResult(signals, nEff);
+        return SelectUsable(signals, usableTitleIds);
+    }
+
+    public static RecoSignalResult SelectUsable(
+        IReadOnlyDictionary<int, double> signals,
+        IReadOnlySet<int>? usableTitleIds)
+    {
+        var usable = usableTitleIds is null
+            ? signals
+            : signals.Where(kv => usableTitleIds.Contains(kv.Key))
+                .ToDictionary(kv => kv.Key, kv => kv.Value);
+        var nEff = usable.Values.Sum(Math.Abs);
+        var usableCount = usable.Count;
+        return new RecoSignalResult(
+            usable,
+            nEff,
+            usableCount,
+            signals.Count - usableCount);
     }
 
     public static double WeightForExplicit(string rating, RecoSignalWeights weights)
@@ -127,4 +144,6 @@ public sealed record RecoSignalTitleFacts(
 
 public sealed record RecoSignalResult(
     IReadOnlyDictionary<int, double> Signals,
-    double EffectiveN);
+    double EffectiveN,
+    int UsableSignalCount = 0,
+    int MissingFeatureSignalCount = 0);

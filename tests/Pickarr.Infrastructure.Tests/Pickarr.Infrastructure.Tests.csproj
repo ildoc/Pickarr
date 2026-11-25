@@ -24,6 +24,8 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\tools\Pickarr.RecoBench\fixtures\preparation.sql" Link="fixtures\preparation.sql" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="..\..\src\Pickarr.Infrastructure\Pickarr.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\tools\Pickarr.RecoBench\Pickarr.RecoBench.csproj" />
   </ItemGroup>
 </Project>

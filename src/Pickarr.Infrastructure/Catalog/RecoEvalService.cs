@@ -62,7 +62,9 @@ public sealed class RecoEvalService(
             : [];
 
         var likeCount = ratings.Count(r => RatingValues.IsPositive(r.Value));
-        var dislikeCount = ratings.Count(r => r.Value == RatingValues.Dislike);
+        var dislikeCount = ratings.Count(r => string.Equals(r.Value, RatingValues.Dislike, StringComparison.OrdinalIgnoreCase));
+        var notInterestedCount = ratings.Count(r =>
+            string.Equals(RatingValues.Normalize(r.Value), RatingValues.NotInterested, StringComparison.Ordinal));
         var ratingCount = ratings.Count;
         var lowSample = ratingCount < RecoEvalMetrics.LowSampleWarningThreshold;
 
@@ -74,7 +76,7 @@ public sealed class RecoEvalService(
                 likeCount,
                 dislikeCount,
                 poolTitleIds.Count,
-                lowSample || true,
+                true,
                 null,
                 null,
                 null,
@@ -83,7 +85,13 @@ public sealed class RecoEvalService(
                 null,
                 false,
                 "insufficient_data",
-                null);
+                null,
+                notInterestedCount,
+                poolTitleIds.Count - ratingCount,
+                0,
+                0,
+                0,
+                0);
             await PersistAsync(empty, level3Active: false, cancellationToken);
             return empty;
         }
@@ -105,6 +113,10 @@ public sealed class RecoEvalService(
         var priors = RecoPrior.Compute(
             titles.Select(t => new RecoTitleStats(t.Id, t.VoteTmdb, t.VoteTmdbCount, t.Popularity)).ToList());
         var priorById = priors.ToDictionary(p => p.TitleId);
+        var trainingTitles = titles.ToDictionary(
+            title => title.Id,
+            title => new RecoLevel3TrainingTitle(title.ReleaseYear, title.VoteTmdb, title.Popularity));
+        var priorScores = priorById.ToDictionary(entry => entry.Key, entry => entry.Value.Prior);
 
         var minCoverage = await GetDoubleAsync(SettingsKeys.RecoEmbeddingsMinCoverage, 0.8, cancellationToken);
         var embeddingsEnabled = await GetBoolAsync(SettingsKeys.RecoEmbeddingsEnabled, true, cancellationToken);
@@ -136,11 +148,19 @@ public sealed class RecoEvalService(
             r => RecoSignals.WeightForExplicit(r.Value, RecoSignals.DefaultWeights));
 
         var unratedPool = poolTitleIds.Where(id => !explicitSignals.ContainsKey(id)).OrderBy(id => id).ToList();
-        var foldIds = ratings
+        var positiveIds = ratings.Where(r => RatingValues.IsPositive(r.Value))
             .OrderBy(r => r.TitleId)
             .Select(r => r.TitleId)
             .Take(RecoEvalMetrics.MaxFolds)
             .ToList();
+        var dislikeIds = ratings.Where(r => string.Equals(r.Value, RatingValues.Dislike, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(r => r.TitleId).Select(r => r.TitleId).Take(RecoEvalMetrics.MaxFolds).ToList();
+        var notInterestedIds = ratings.Where(r => string.Equals(
+                RatingValues.Normalize(r.Value), RatingValues.NotInterested, StringComparison.Ordinal))
+            .OrderBy(r => r.TitleId).Select(r => r.TitleId).Take(RecoEvalMetrics.MaxFolds).ToList();
+        var positiveSet = positiveIds.ToHashSet();
+        var dislikeSet = dislikeIds.ToHashSet();
+        var foldIds = positiveIds.Concat(dislikeIds).Concat(notInterestedIds);
 
         var rng = new Random(42);
         var priorFolds = new List<(double Auc, bool Hit)>();
@@ -148,12 +168,13 @@ public sealed class RecoEvalService(
         var l2Folds = new List<(double Auc, bool Hit)>();
         var combinedFolds = new List<(double Auc, bool Hit)>();
         var l3Folds = new List<(double Auc, bool Hit)>();
-        var labelledCombined = new List<(bool IsLike, double Score)>();
+        var positiveScores = new List<double>();
+        var dislikeScores = new List<double>();
+        var notInterestedScores = new List<double>();
 
         foreach (var heldOutId in foldIds)
         {
-            var heldSignal = explicitSignals[heldOutId];
-            var isLike = heldSignal > 0;
+            var isLike = positiveSet.Contains(heldOutId);
             var trainSignals = explicitSignals
                 .Where(kv => kv.Key != heldOutId)
                 .ToDictionary(kv => kv.Key, kv => kv.Value);
@@ -165,29 +186,30 @@ public sealed class RecoEvalService(
             var sparseNorm = RecoNormalize.MinMaxByTitle(sparseRaw);
 
             IReadOnlyDictionary<int, double> knnUnit = new Dictionary<int, double>();
-            var foldUseL2 = useL2 && nEff > 0 && embMap.Count > 0;
+            IReadOnlyDictionary<int, double> knnFeatureScores = new Dictionary<int, double>();
+            var foldUseL2 = useL2 && trainSignals.Any(entry => entry.Value != 0 && embMap.ContainsKey(entry.Key));
             if (foldUseL2)
             {
                 var knnRaw = RecoKnn.ScoreAll(embMap, trainSignals);
-                var knn01 = knnRaw.ToDictionary(kv => kv.Key, kv => RecoKnn.ToUnitInterval(kv.Value));
-                knnUnit = RecoNormalize.MinMaxByTitle(knn01);
+                knnFeatureScores = knnRaw.ToDictionary(kv => kv.Key, kv => RecoKnn.ToUnitInterval(kv.Value));
+                knnUnit = RecoNormalize.MinMaxByTitle(knnFeatureScores);
             }
 
-            var weightSparse = foldUseL2 ? 0.4 : 1.0;
-            var weightKnn = foldUseL2 ? 0.6 : 0.0;
+            var weightSparse = !foldUseL2 ? 1.0 : profile.IsEmpty ? 0 : 0.4;
+            var weightKnn = 1 - weightSparse;
 
             IRecoLevel3Scorer? foldL3 = null;
-            if (trainSignals.Count >= minRatings)
+            if (isLike && unratedPool.Count > 0 && trainSignals.Count >= minRatings)
             {
-                var examples = BuildLevel3Examples(
+                var examples = RecoLevel3Training.BuildExamples(
                     trainSignals,
-                    titles,
+                    trainSignals.ToDictionary(entry => entry.Key, entry => entry.Value > 0),
+                    trainingTitles,
                     titleVectors,
-                    sparseNorm,
-                    knnUnit,
-                    priorById,
-                    weightSparse,
-                    weightKnn);
+                    embMap,
+                    priorScores,
+                    useL2,
+                    n0);
                 foldL3 = level3Model.TryTrain(
                     examples,
                     minRatings,
@@ -211,51 +233,64 @@ public sealed class RecoEvalService(
                     "l2" => knn,
                     "combined" => RecoLearning.FuseScore(prior, personal, personalWeight),
                     "l3" when foldL3 is not null => foldL3.Score(BuildFeatures(
-                        titleId, titles, titleVectors, sparse, knn, prior)),
+                        titleId,
+                        titles,
+                        titleVectors,
+                        sparseRaw.GetValueOrDefault(titleId),
+                        knnFeatureScores.GetValueOrDefault(titleId, 0.5),
+                        prior,
+                        weightSparse,
+                        weightKnn,
+                        personalWeight,
+                        !profile.IsEmpty,
+                        foldUseL2 && embMap.ContainsKey(titleId))),
                     _ => RecoLearning.FuseScore(prior, personal, personalWeight),
                 };
             }
 
-            var negatives = SampleNegatives(unratedPool, heldOutId, RecoEvalMetrics.DefaultNegativesPerFold, rng);
-
-            void Collect(string level, List<(double Auc, bool Hit)> sink)
+            if (isLike && unratedPool.Count > 0)
             {
-                if (level == "l2" && !foldUseL2)
+                var negatives = SampleNegatives(unratedPool, heldOutId, RecoEvalMetrics.DefaultNegativesPerFold, rng);
+
+                void Collect(string level, List<(double Auc, bool Hit)> sink)
                 {
-                    return;
+                    if ((level == "l2" && !foldUseL2) || (level == "l3" && foldL3 is null))
+                    {
+                        return;
+                    }
+
+                    var pos = ScoreLevel(heldOutId, level);
+                    var negScores = negatives.Select(id => ScoreLevel(id, level)).ToList();
+                    sink.Add((
+                        RecoEvalMetrics.PairwiseAuc(pos, negScores),
+                        RecoEvalMetrics.HitAt(pos, negScores)));
                 }
 
-                if (level == "l3" && foldL3 is null)
-                {
-                    return;
-                }
-
-                var pos = ScoreLevel(heldOutId, level);
-                var negScores = negatives.Select(id => ScoreLevel(id, level)).ToList();
-                sink.Add((
-                    RecoEvalMetrics.PairwiseAuc(pos, negScores),
-                    RecoEvalMetrics.HitAt(pos, negScores)));
+                Collect("prior", priorFolds);
+                Collect("l1", l1Folds);
+                Collect("l2", l2Folds);
+                Collect("combined", combinedFolds);
+                Collect("l3", l3Folds);
             }
 
-            Collect("prior", priorFolds);
-            Collect("l1", l1Folds);
-            Collect("l2", l2Folds);
-            Collect("combined", combinedFolds);
-            Collect("l3", l3Folds);
-
-            labelledCombined.Add((isLike, ScoreLevel(heldOutId, "combined")));
+            var score = ScoreLevel(heldOutId, "combined");
+            (isLike ? positiveScores : dislikeSet.Contains(heldOutId) ? dislikeScores : notInterestedScores).Add(score);
         }
 
-        var priorMetrics = RecoEvalMetrics.Aggregate(priorFolds);
-        var l1Metrics = RecoEvalMetrics.Aggregate(l1Folds);
+        var priorMetrics = priorFolds.Count > 0 ? RecoEvalMetrics.Aggregate(priorFolds) : null;
+        var l1Metrics = l1Folds.Count > 0 ? RecoEvalMetrics.Aggregate(l1Folds) : null;
         var l2Metrics = l2Folds.Count > 0 ? RecoEvalMetrics.Aggregate(l2Folds) : null;
-        var combinedMetrics = RecoEvalMetrics.Aggregate(combinedFolds);
+        var combinedMetrics = combinedFolds.Count > 0 ? RecoEvalMetrics.Aggregate(combinedFolds) : null;
         var l3Metrics = l3Folds.Count > 0 ? RecoEvalMetrics.Aggregate(l3Folds) : null;
-        var likeVsDislike = RecoEvalMetrics.LikeVsDislikeAuc(labelledCombined);
+        var positives = positiveScores.Select(score => (IsLike: true, Score: score));
+        var likeVsDislike = RecoEvalMetrics.LikeVsDislikeAuc(
+            positives.Concat(dislikeScores.Select(score => (IsLike: false, Score: score))).ToList());
+        var likeVsNotInterested = RecoEvalMetrics.LikeVsDislikeAuc(
+            positives.Concat(notInterestedScores.Select(score => (IsLike: false, Score: score))).ToList());
 
         string? skipReason = null;
         var level3Active = RecoEvalMetrics.ShouldActivateLevel3(
-            l2Metrics ?? combinedMetrics,
+            combinedMetrics,
             l3Metrics,
             likeCount,
             dislikeCount,
@@ -271,13 +306,23 @@ public sealed class RecoEvalService(
             {
                 skipReason = "below_min_per_class";
             }
+            else if (combinedMetrics is null)
+            {
+                skipReason = "insufficient_retrieval_data";
+            }
             else if (l3Metrics is null)
             {
                 skipReason = "l3_unavailable";
             }
+            else if (combinedMetrics is null
+                     || l3Metrics.Folds < RecoEvalMetrics.Level3MinEvaluationFolds
+                     || l3Metrics.Folds != combinedMetrics.Folds)
+            {
+                skipReason = "insufficient_l3_folds";
+            }
             else
             {
-                skipReason = "did_not_beat_l2";
+                skipReason = "did_not_beat_combined";
             }
         }
 
@@ -304,7 +349,14 @@ public sealed class RecoEvalService(
                 ["gamma"] = RecoKnn.DefaultGamma,
                 ["K"] = RecoKnn.DefaultK,
                 ["m"] = RecoKnn.DefaultSimMin,
-            });
+            },
+            notInterestedCount,
+            unratedPool.Count,
+            priorFolds.Count > 0 ? Math.Min(unratedPool.Count, RecoEvalMetrics.DefaultNegativesPerFold) : 0,
+            positiveScores.Count,
+            dislikeScores.Count,
+            notInterestedScores.Count,
+            likeVsNotInterested);
 
         await PersistAsync(report, level3Active, cancellationToken);
         return report;
@@ -369,44 +421,18 @@ public sealed class RecoEvalService(
         return RecoSparse.BuildTitleVectors(sparseFeatures);
     }
 
-    private static List<RecoLevel3Example> BuildLevel3Examples(
-        IReadOnlyDictionary<int, double> signals,
-        IReadOnlyList<TitleRow> titles,
-        IReadOnlyDictionary<int, SparseVector> titleVectors,
-        IReadOnlyDictionary<int, double> sparseNorm,
-        IReadOnlyDictionary<int, double> knnUnit,
-        IReadOnlyDictionary<int, RecoPriorScore> priorById,
-        double weightSparse,
-        double weightKnn)
-    {
-        var byId = titles.ToDictionary(t => t.Id);
-        var examples = new List<RecoLevel3Example>();
-        foreach (var (titleId, signal) in signals)
-        {
-            if (!byId.TryGetValue(titleId, out var title))
-            {
-                continue;
-            }
-
-            var sparse = sparseNorm.GetValueOrDefault(titleId, 0.5);
-            var knn = knnUnit.GetValueOrDefault(titleId, 0.5);
-            var prior = priorById[titleId].Prior;
-            examples.Add(new RecoLevel3Example(
-                titleId,
-                signal > 0,
-                BuildFeatures(titleId, titles, titleVectors, sparse, knn, prior)));
-        }
-
-        return examples;
-    }
-
     private static float[] BuildFeatures(
         int titleId,
         IReadOnlyList<TitleRow> titles,
         IReadOnlyDictionary<int, SparseVector> titleVectors,
         double sparse,
         double knn,
-        double prior)
+        double prior,
+        double weightSparse,
+        double weightKnn,
+        double personalWeight,
+        bool hasSparse,
+        bool hasKnn)
     {
         var title = titles.First(t => t.Id == titleId);
         return RecoLevel3.BuildFeatures(
@@ -416,7 +442,12 @@ public sealed class RecoEvalService(
             prior,
             title.ReleaseYear,
             title.VoteTmdb,
-            title.Popularity);
+            title.Popularity,
+            weightSparse,
+            weightKnn,
+            personalWeight,
+            hasSparse,
+            hasKnn);
     }
 
     private static List<int> SampleNegatives(IReadOnlyList<int> unrated, int heldOutId, int count, Random rng)

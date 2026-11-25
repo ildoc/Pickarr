@@ -113,6 +113,116 @@ describe('TitleDialog ratings', () => {
     expect(screen.queryByText(/Arr instance not configured/i)).toBeNull()
   })
 
+  it('places the library section below the personal actions', async () => {
+    vi.mocked(fetchTitle).mockResolvedValueOnce({
+      id: 42,
+      name: 'Dialog Movie',
+      originalTitle: 'Dialog Movie',
+      year: 2021,
+      category: 'movie',
+      overview: null,
+      runtimeMinutes: null,
+      seasonCount: null,
+      episodeCount: null,
+      genres: [{ id: 1, name: 'Drama' }],
+      posterUrl: null,
+      backdropUrl: null,
+      ratings: { tmdb: null, tmdbVotes: null },
+      links: { tmdb: null, imdb: null, tvdb: null },
+      isFavorite: false,
+      isWatched: false,
+      rating: null,
+      metadataStatus: 'ready',
+      availability: [],
+      cast: [],
+      arr: {
+        kind: 'radarr',
+        arrId: 7,
+        state: 'downloaded',
+        canAdd: false,
+        canDelete: true,
+        addBlockedReason: null,
+        monitored: null,
+        progress: null,
+        sizeOnDisk: null,
+        path: '/movies/dialog',
+        fileCount: 1,
+        syncedAt: '2026-11-25T08:00:00Z',
+        seasons: null,
+        externalUrl: null,
+      },
+    } as TitleDetail)
+
+    renderDialog()
+
+    const actions = await screen.findByRole('button', { name: 'Like' })
+    const library = await screen.findByRole('heading', { name: 'Library' })
+    expect(actions.compareDocumentPosition(library) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText('Genres: Drama')).toBeTruthy()
+  })
+
+  it('renders ordered cast members with placeholders and conditional IMDb links', async () => {
+    vi.mocked(fetchTitle).mockResolvedValueOnce({
+      id: 42,
+      name: 'Dialog Movie',
+      originalTitle: 'Dialog Movie',
+      year: 2021,
+      category: 'movie',
+      overview: null,
+      runtimeMinutes: null,
+      seasonCount: null,
+      episodeCount: null,
+      genres: [],
+      posterUrl: null,
+      backdropUrl: null,
+      ratings: { tmdb: null, tmdbVotes: null },
+      links: { tmdb: null, imdb: null, tvdb: null },
+      isFavorite: false,
+      isWatched: false,
+      rating: null,
+      metadataStatus: 'ready',
+      availability: [],
+      cast: ['Actor One'],
+      castMembers: [
+        {
+          name: 'Actor One',
+          photoUrl: '/actor-one.jpg',
+          imdbUrl: 'https://www.imdb.com/name/nm0000001/',
+        },
+        { name: 'Actor Two', photoUrl: null, imdbUrl: null },
+        { name: 'Actor One', photoUrl: null, imdbUrl: null },
+      ],
+      arr: {
+        kind: 'radarr',
+        arrId: null,
+        state: 'notInLibrary',
+        canAdd: false,
+        canDelete: false,
+        addBlockedReason: 'notConfigured',
+        monitored: null,
+        progress: null,
+        sizeOnDisk: null,
+        path: null,
+        fileCount: null,
+        syncedAt: null,
+        seasons: null,
+        externalUrl: null,
+      },
+    } as TitleDetail)
+
+    renderDialog()
+
+    const cast = await screen.findByRole('list', { name: 'Cast' })
+    expect(cast.querySelectorAll('[role="listitem"]')).toHaveLength(2)
+    expect(screen.getByAltText('Actor One')).toBeTruthy()
+    expect(screen.getByText('Actor Two')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Open IMDb page for Actor One' })).toHaveAttribute(
+      'href',
+      'https://www.imdb.com/name/nm0000001/',
+    )
+    expect(screen.queryByRole('link', { name: 'Open IMDb page for Actor Two' })).toBeNull()
+  })
+
   it('lets the user like a title from the detail dialog', async () => {
     const user = userEvent.setup()
     renderDialog()

@@ -25,6 +25,7 @@ Package versions live in `Directory.Packages.props`. Nullable reference types an
 | `src/Pickarr.Infrastructure` | EF Core SQLite, Watchmode, TMDB, Sonarr/Radarr, Hangfire jobs. |
 | `src/Pickarr.Api` | Minimal API endpoints in `Endpoints/`. `Program.cs` wires startup. |
 | `src/Pickarr.WebApp` | React SPA. |
+| `tools/Pickarr.RecoBench` | Isolated SQLite snapshot utility and recommendation preparation diagnostics; no quality evaluation yet. |
 | `tests/Pickarr.Core.Tests` | Unit tests. |
 | `tests/Pickarr.Infrastructure.Tests` | Service tests with SQLite in memory and WireMock. |
 | `tests/Pickarr.Integration.Tests` | API tests through `WebApplicationFactory`. |
@@ -97,5 +98,6 @@ Push a Git tag `vX.Y.Z` (or `X.Y.Z`) to publish a release. After checks and the 
 ## Next steps
 
 - [Architecture](architecture.md)
+- [Recommendation benchmark snapshots](recommendation-snapshots.md)
 - [User documentation](../user/README.md)
 - [docs/AGENTS.md](../AGENTS.md) — when to update documentation

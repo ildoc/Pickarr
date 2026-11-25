@@ -19,6 +19,7 @@ public interface IMetadataProvider
         bool isMovie,
         CancellationToken cancellationToken = default);
     Task<TmdbFindResult?> FindByImdbAsync(string imdbId, CancellationToken cancellationToken = default);
+    Task<TmdbPersonExternalIds?> GetPersonExternalIdsAsync(int tmdbPersonId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TmdbGenre>> GetMovieGenresAsync(string language, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TmdbGenre>> GetTvGenresAsync(string language, CancellationToken cancellationToken = default);
     Task<TmdbImageConfig> GetImageConfigAsync(CancellationToken cancellationToken = default);

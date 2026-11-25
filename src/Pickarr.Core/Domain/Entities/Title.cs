@@ -23,6 +23,8 @@ public sealed class Title
     public string? PosterPath { get; set; }
     public string? BackdropPath { get; set; }
     public string? CastJson { get; set; }
+    public DateTime? CastFetchedAt { get; set; }
+    public DateTime? CastFetchAttemptAt { get; set; }
     public string? SeasonsJson { get; set; }
     /// <summary>JSON array of TMDB origin_country codes (optional reco feature).</summary>
     public string? OriginCountries { get; set; }
@@ -39,6 +41,7 @@ public sealed class Title
     public ICollection<TitleGenre> TitleGenres { get; set; } = new List<TitleGenre>();
     public ICollection<TitleKeyword> TitleKeywords { get; set; } = new List<TitleKeyword>();
     public ICollection<TitleCredit> TitleCredits { get; set; } = new List<TitleCredit>();
+    public ICollection<TitleCastMember> CastMembers { get; set; } = new List<TitleCastMember>();
     public ICollection<TitleTmdbRecommendation> TmdbRecommendationsOut { get; set; } = new List<TitleTmdbRecommendation>();
     public ICollection<TitleTmdbRecommendation> TmdbRecommendationsIn { get; set; } = new List<TitleTmdbRecommendation>();
     public ICollection<Favorite> Favorites { get; set; } = new List<Favorite>();

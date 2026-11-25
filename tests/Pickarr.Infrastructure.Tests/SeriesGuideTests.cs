@@ -129,6 +129,34 @@ public sealed class SeriesGuideTests
         (await db.Titles.SingleAsync()).SeasonsJson.ShouldBeNull();
     }
 
+    [Fact]
+    public async Task Seasons_stay_empty_when_tmdb_returns_not_found()
+    {
+        await using var db = await CreateDbAsync();
+        db.Titles.Add(new Title
+        {
+            MediaType = MediaTypes.Series,
+            Category = TitleCategories.Series,
+            OriginalTitle = "Missing",
+            TmdbId = 404,
+            TmdbType = "tv",
+            MetadataStatus = MetadataStatuses.Ready,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+        var titleId = db.Titles.Single().Id;
+        var tmdb = new ScriptedTmdb { ThrowNotFound = true };
+        var guide = new SeriesGuideService(db, tmdb);
+
+        var seasons = await guide.ListSeasonsAsync(titleId, null);
+
+        seasons.ShouldNotBeNull();
+        seasons.ShouldBeEmpty();
+        tmdb.TvCalls.ShouldBe(1);
+        (await db.Titles.SingleAsync()).SeasonsJson.ShouldBeNull();
+    }
+
     private static async Task<PickarrDbContext> CreateDbAsync()
     {
         var connection = new SqliteConnection("Data Source=:memory:");
@@ -144,11 +172,16 @@ public sealed class SeriesGuideTests
         public int SeasonCalls { get; private set; }
         public int TvCalls { get; private set; }
         public bool ReturnNullDetails { get; init; }
+        public bool ThrowNotFound { get; init; }
         public string Type => "tmdb";
 
         public Task<TmdbTitleDetails?> GetTvAsync(int tmdbId, string language, CancellationToken cancellationToken = default)
         {
             TvCalls++;
+            if (ThrowNotFound)
+            {
+                return Task.FromException<TmdbTitleDetails?>(new TmdbResourceNotFoundException($"tv/{tmdbId}"));
+            }
             if (ReturnNullDetails)
             {
                 return Task.FromResult<TmdbTitleDetails?>(null);
@@ -187,6 +220,11 @@ public sealed class SeriesGuideTests
 
         public Task<TmdbFindResult?> FindByImdbAsync(string imdbId, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<TmdbPersonExternalIds?> GetPersonExternalIdsAsync(
+            int tmdbPersonId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<TmdbPersonExternalIds?>(null);
 
         public Task<IReadOnlyList<TmdbGenre>> GetMovieGenresAsync(string language, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();

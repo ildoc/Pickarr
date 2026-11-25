@@ -9,10 +9,11 @@ public static class RecoEvalMetrics
     public const int MaxFolds = 50;
     public const double Level3AucMargin = 0.01;
     public const int Level3MinPerClass = 20;
+    public const int Level3MinEvaluationFolds = 10;
 
     /// <summary>
-    /// Pairwise AUC for one positive against negatives: fraction of negatives scored strictly lower.
-    /// Ties count as 0.5.
+    /// Pairwise AUC for one positive against comparisons. Exact ties count as 0.5.
+    /// Returns the neutral sentinel 0.5 when there are no comparisons; reports must omit such folds.
     /// </summary>
     public static double PairwiseAuc(double positiveScore, IReadOnlyList<double> negativeScores)
     {
@@ -28,7 +29,7 @@ public static class RecoEvalMetrics
             {
                 wins += 1.0;
             }
-            else if (Math.Abs(positiveScore - neg) < 1e-12)
+            else if (positiveScore == neg)
             {
                 wins += 0.5;
             }
@@ -62,15 +63,15 @@ public static class RecoEvalMetrics
         return new RecoEvalLevelMetrics(auc, hit, folds.Count);
     }
 
-    /// <summary>AUC treating Like as positive and Dislike as negative on a scored list.</summary>
-    public static double LikeVsDislikeAuc(
+    /// <summary>Pairwise AUC for labelled scores, or null when either class is absent.</summary>
+    public static double? LikeVsDislikeAuc(
         IReadOnlyList<(bool IsLike, double Score)> labelled)
     {
         var likes = labelled.Where(x => x.IsLike).Select(x => x.Score).ToList();
         var dislikes = labelled.Where(x => !x.IsLike).Select(x => x.Score).ToList();
         if (likes.Count == 0 || dislikes.Count == 0)
         {
-            return 0.5;
+            return null;
         }
 
         var sum = 0.0;
@@ -83,7 +84,7 @@ public static class RecoEvalMetrics
     }
 
     public static bool ShouldActivateLevel3(
-        RecoEvalLevelMetrics? level2,
+        RecoEvalLevelMetrics? combined,
         RecoEvalLevelMetrics? level3,
         int likeCount,
         int dislikeCount,
@@ -91,7 +92,7 @@ public static class RecoEvalMetrics
         double margin = Level3AucMargin,
         int minPerClass = Level3MinPerClass)
     {
-        if (level2 is null || level3 is null)
+        if (combined is null || level3 is null)
         {
             return false;
         }
@@ -101,12 +102,13 @@ public static class RecoEvalMetrics
             return false;
         }
 
-        if (level3.Folds < Math.Min(10, MaxFolds / 2))
+        if (level3.Folds < Level3MinEvaluationFolds
+            || level3.Folds != combined.Folds)
         {
             return false;
         }
 
-        return level3.Auc >= level2.Auc + margin;
+        return level3.Auc >= combined.Auc + margin;
     }
 }
 

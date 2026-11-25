@@ -5,7 +5,7 @@ namespace Pickarr.Core.Abstractions;
 /// <summary>Trains and scores the optional supervised level-3 model (ML.NET in Infrastructure).</summary>
 public interface IRecoLevel3Model
 {
-    /// <summary>Returns null when the training set is below thresholds.</summary>
+    /// <summary>Returns null when examples, classes, or feature vectors do not meet the training requirements.</summary>
     IRecoLevel3Scorer? TryTrain(IReadOnlyList<RecoLevel3Example> examples, int minRatings, int minPerClass);
 }
 

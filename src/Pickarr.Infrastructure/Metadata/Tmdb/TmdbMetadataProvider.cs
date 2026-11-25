@@ -25,7 +25,7 @@ public sealed class TmdbMetadataProvider(
         CancellationToken cancellationToken = default)
     {
         var path = $"movie/{tmdbId}?language={Uri.EscapeDataString(language)}&append_to_response=external_ids,keywords,credits";
-        var dto = await GetAsync<TmdbMovieDto>(path, cancellationToken);
+        var dto = await GetRequiredAsync<TmdbMovieDto>(path, $"movie/{tmdbId}", cancellationToken);
         return dto is null ? null : MapMovie(dto);
     }
 
@@ -35,7 +35,7 @@ public sealed class TmdbMetadataProvider(
         CancellationToken cancellationToken = default)
     {
         var path = $"tv/{tmdbId}?language={Uri.EscapeDataString(language)}&append_to_response=external_ids,keywords,credits";
-        var dto = await GetAsync<TmdbTvDto>(path, cancellationToken);
+        var dto = await GetRequiredAsync<TmdbTvDto>(path, $"tv/{tmdbId}", cancellationToken);
         return dto is null ? null : MapTv(dto);
     }
 
@@ -105,6 +105,16 @@ public sealed class TmdbMetadataProvider(
         return tv is null ? null : new TmdbFindResult(tv.Id, "tv");
     }
 
+    public async Task<TmdbPersonExternalIds?> GetPersonExternalIdsAsync(
+        int tmdbPersonId,
+        CancellationToken cancellationToken = default)
+    {
+        var dto = await GetAsync<TmdbPersonExternalIdsDto>(
+            $"person/{tmdbPersonId}/external_ids",
+            cancellationToken);
+        return dto is null ? null : new TmdbPersonExternalIds(dto.ImdbId);
+    }
+
     public async Task<IReadOnlyList<TmdbGenre>> GetMovieGenresAsync(
         string language,
         CancellationToken cancellationToken = default)
@@ -159,6 +169,24 @@ public sealed class TmdbMetadataProvider(
         return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
     }
 
+    private async Task<T?> GetRequiredAsync<T>(string relativePath, string resource, CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync(relativePath, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            throw new TmdbResourceNotFoundException(resource);
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            logger.LogWarning("TMDB call failed {Status}: {Body}", (int)response.StatusCode, body);
+            throw new HttpRequestException($"TMDB request failed ({(int)response.StatusCode}).");
+        }
+
+        return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
+    }
+
     private static TmdbTitleDetails MapMovie(TmdbMovieDto dto)
     {
         var keywords = dto.Keywords?.Keywords
@@ -188,7 +216,8 @@ public sealed class TmdbMetadataProvider(
             CastNames(dto.Credits),
             Seasons: null,
             MapMovieCredits(dto.Credits),
-            OriginCountries(dto.OriginCountry));
+            OriginCountries(dto.OriginCountry),
+            MapDetailCast(dto.Credits));
     }
 
     private static TmdbTitleDetails MapTv(TmdbTvDto dto)
@@ -221,7 +250,8 @@ public sealed class TmdbMetadataProvider(
             CastNames(dto.Credits),
             MapSeasons(dto.Seasons),
             MapTvCredits(dto.Credits, dto.CreatedBy),
-            OriginCountries(dto.OriginCountry));
+            OriginCountries(dto.OriginCountry),
+            MapDetailCast(dto.Credits));
     }
 
     private static IReadOnlyList<TmdbSeason> MapSeasons(IEnumerable<TmdbSeasonDto> seasons) =>
@@ -244,6 +274,25 @@ public sealed class TmdbMetadataProvider(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(12)
             .ToList() ?? [];
+
+    private static IReadOnlyList<TmdbDetailCastMember> MapDetailCast(TmdbCreditsDto? credits)
+    {
+        if (credits is null)
+        {
+            return [];
+        }
+
+        return credits.Cast
+            .Where(c => c.Id > 0 && !string.IsNullOrWhiteSpace(c.Name))
+            .OrderBy(c => c.Order)
+            .Take(12)
+            .Select(c => new TmdbDetailCastMember(
+                c.Id,
+                c.Name.Trim(),
+                string.IsNullOrWhiteSpace(c.ProfilePath) ? null : c.ProfilePath.Trim(),
+                c.Order))
+            .ToList();
+    }
 
     private static IReadOnlyList<TmdbCredit> MapMovieCredits(TmdbCreditsDto? credits)
     {

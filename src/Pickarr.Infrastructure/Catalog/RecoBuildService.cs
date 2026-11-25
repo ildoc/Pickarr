@@ -69,9 +69,17 @@ public sealed class RecoBuildService(
 
         var poolIdSet = poolTitleIds.ToHashSet();
 
-        var titles = await db.Titles
+        var signalFacts = await LoadSignalFactsAsync(profileId, cancellationToken);
+        var useImplicit = await db.Profiles.AsNoTracking()
+            .Where(profile => profile.Id == profileId)
+            .Select(profile => (bool?)profile.UseImplicit)
+            .SingleOrDefaultAsync(cancellationToken) ?? true;
+        var weights = await LoadSignalWeightsAsync(cancellationToken);
+        var globalSignals = RecoSignals.Compute(signalFacts, weights, useImplicit).Signals;
+        var featureIds = poolIdSet.Union(globalSignals.Keys).ToHashSet();
+        var featureTitles = await db.Titles
             .AsNoTracking()
-            .Where(t => poolIdSet.Contains(t.Id))
+            .Where(t => featureIds.Contains(t.Id))
             .Select(t => new
             {
                 t.Id,
@@ -82,12 +90,12 @@ public sealed class RecoBuildService(
                 t.OriginalLanguage,
                 t.ReleaseYear,
                 t.OriginCountries,
-                t.OriginalTitle,
             })
             .ToListAsync(cancellationToken);
+        var titles = featureTitles.Where(t => poolIdSet.Contains(t.Id)).ToList();
 
         var genreRows = await db.TitleGenres.AsNoTracking()
-            .Where(tg => poolIdSet.Contains(tg.TitleId))
+            .Where(tg => featureIds.Contains(tg.TitleId))
             .Select(tg => new { tg.TitleId, tg.GenreId })
             .ToListAsync(cancellationToken);
         var genresByTitle = genreRows
@@ -95,7 +103,7 @@ public sealed class RecoBuildService(
             .ToDictionary(g => g.Key, g => (IReadOnlyList<int>)g.Select(x => x.GenreId).ToList());
 
         var keywordRows = await db.TitleKeywords.AsNoTracking()
-            .Where(tk => poolIdSet.Contains(tk.TitleId))
+            .Where(tk => featureIds.Contains(tk.TitleId))
             .Select(tk => new { tk.TitleId, tk.KeywordId })
             .ToListAsync(cancellationToken);
         var keywordsByTitle = keywordRows
@@ -103,7 +111,7 @@ public sealed class RecoBuildService(
             .ToDictionary(g => g.Key, g => (IReadOnlyList<int>)g.Select(x => x.KeywordId).ToList());
 
         var creditRows = await db.TitleCredits.AsNoTracking()
-            .Where(tc => poolIdSet.Contains(tc.TitleId))
+            .Where(tc => featureIds.Contains(tc.TitleId))
             .Select(tc => new { tc.TitleId, tc.PersonId, tc.Role })
             .ToListAsync(cancellationToken);
         var castByTitle = creditRows
@@ -115,7 +123,7 @@ public sealed class RecoBuildService(
             .GroupBy(c => c.TitleId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<int>)g.Select(x => x.PersonId).Distinct().ToList());
 
-        var sparseFeatures = titles.Select(t => new RecoSparseTitleFeatures(
+        var features = featureTitles.Select(t => new RecoSparseTitleFeatures(
             t.Id,
             t.Category,
             t.OriginalLanguage,
@@ -125,69 +133,64 @@ public sealed class RecoBuildService(
             castByTitle.GetValueOrDefault(t.Id) ?? [],
             directorByTitle.GetValueOrDefault(t.Id) ?? [],
             ParseCountries(t.OriginCountries))).ToList();
-
-        var titleVectors = RecoSparse.BuildTitleVectors(sparseFeatures);
-
-        var useImplicit = await db.Profiles.AsNoTracking()
-            .Where(profile => profile.Id == profileId)
-            .Select(profile => (bool?)profile.UseImplicit)
-            .SingleOrDefaultAsync(cancellationToken) ?? true;
-        var weights = new RecoSignalWeights(
-            await GetDoubleSettingAsync(SettingsKeys.RecoWeightLove, RecoSignals.DefaultWeightLove, cancellationToken),
-            await GetDoubleSettingAsync(SettingsKeys.RecoWeightLike, RecoSignals.DefaultWeightLike, cancellationToken),
-            await GetDoubleSettingAsync(SettingsKeys.RecoWeightDislike, RecoSignals.DefaultWeightDislike, cancellationToken),
-            await GetDoubleSettingAsync(
-                SettingsKeys.RecoWeightNotInterested,
-                RecoSignals.DefaultWeightNotInterested,
-                cancellationToken),
-            await GetDoubleSettingAsync(SettingsKeys.RecoWeightFavorite, RecoSignals.DefaultWeightFavorite, cancellationToken),
-            await GetDoubleSettingAsync(SettingsKeys.RecoWeightArrAdd, RecoSignals.DefaultWeightArrAdd, cancellationToken),
-            await GetDoubleSettingAsync(SettingsKeys.RecoWeightDownloaded, RecoSignals.DefaultWeightDownloaded, cancellationToken),
-            await GetDoubleSettingAsync(SettingsKeys.RecoWeightWatched, RecoSignals.DefaultWeightWatched, cancellationToken));
-        var n0 = await GetDoubleSettingAsync(SettingsKeys.RecoN0, RecoLearning.DefaultN0, cancellationToken);
-
-        // Signals are global (all titles), not limited to the current pool.
-        var signalFacts = await LoadSignalFactsAsync(profileId, cancellationToken);
-        var signalResult = RecoSignals.Compute(signalFacts, weights, useImplicit);
-        var nEff = signalResult.EffectiveN;
-        var stage = RecoLearning.StageFromEffectiveN(nEff, n0);
-        var personalWeight = RecoLearning.PersonalWeight(nEff, n0);
-
-        var profile = RecoSparse.BuildProfile(signalResult.Signals, titleVectors);
-        var sparseRaw = RecoSparse.ScoreAll(profile, titleVectors);
-        var sparseNorm = RecoNormalize.MinMaxByTitle(sparseRaw);
-        var householdNorm = await LoadHouseholdNormAsync(profileId, weights, titleVectors, cancellationToken);
-        var slotWeight = RecoHousehold.SlotWeight(nEff, householdNorm is not null, n0);
+        var titleVectors = RecoSparse.BuildTitleVectors(
+            features.Where(f => poolIdSet.Contains(f.TitleId)).ToList(),
+            features.Where(f => !poolIdSet.Contains(f.TitleId)).ToList());
+        var poolVectors = titleVectors.Where(kv => poolIdSet.Contains(kv.Key)).ToDictionary();
+        var usableIds = titleVectors.Where(kv => !kv.Value.IsEmpty).Select(kv => kv.Key).ToHashSet();
 
         var minCoverage = await GetDoubleSettingAsync(SettingsKeys.RecoEmbeddingsMinCoverage, 0.8, cancellationToken);
         var embeddingsEnabled = await GetBoolSettingAsync(SettingsKeys.RecoEmbeddingsEnabled, true, cancellationToken);
         var statePeek = await RecoProfileStates.FindAdminNoTrackingAsync(db, cancellationToken);
         var coverage = statePeek?.EmbeddingCoverage ?? 0;
         var modelReady = string.Equals(statePeek?.ModelStatus, RecoModelStatuses.Ready, StringComparison.OrdinalIgnoreCase);
-        var useL2 = embeddingsEnabled && modelReady && coverage >= minCoverage && nEff > 0;
+        var useL2 = embeddingsEnabled && modelReady && coverage >= minCoverage && globalSignals.Count > 0;
 
+        IReadOnlyDictionary<int, float[]> embMap = new Dictionary<int, float[]>();
+        IReadOnlyDictionary<int, double> knnFeatureScores = new Dictionary<int, double>();
         IReadOnlyDictionary<int, double> knnUnit = new Dictionary<int, double>();
         if (useL2)
         {
             var modelId = statePeek?.ModelId ?? RecoModelCatalog.DefaultModelId;
             var embRows = await db.TitleEmbeddings.AsNoTracking()
-                .Where(e => e.ModelId == modelId && poolIdSet.Contains(e.TitleId))
+                .Where(e => e.ModelId == modelId && featureIds.Contains(e.TitleId))
                 .Select(e => new { e.TitleId, e.Vector })
                 .ToListAsync(cancellationToken);
-            var embMap = embRows.ToDictionary(
-                e => e.TitleId,
-                e => RecoEmbeddingService.BytesToFloats(e.Vector));
-            if (embMap.Count > 0)
+            embMap = embRows
+                .Where(e => e.Vector.Length > 0 && e.Vector.Length % sizeof(float) == 0)
+                .Select(e => (e.TitleId, Vector: RecoEmbeddingService.BytesToFloats(e.Vector)))
+                .Where(e => e.Vector.All(float.IsFinite) && e.Vector.Any(x => x != 0))
+                .ToDictionary(e => e.TitleId, e => e.Vector);
+            var candidates = embMap.Where(kv => poolIdSet.Contains(kv.Key)).ToDictionary();
+            var dimensions = candidates.Values.Select(v => v.Length).ToHashSet();
+            embMap = embMap.Where(kv => dimensions.Contains(kv.Value.Length)).ToDictionary();
+            var neighbours = globalSignals.Where(kv => kv.Value != 0 && embMap.ContainsKey(kv.Key));
+            if (globalSignals.Count > RecoKnn.DefaultMaxSignals)
             {
-                var knnRaw = RecoKnn.ScoreAll(embMap, signalResult.Signals);
-                var knn01 = knnRaw.ToDictionary(kv => kv.Key, kv => RecoKnn.ToUnitInterval(kv.Value));
-                knnUnit = RecoNormalize.MinMaxByTitle(knn01);
+                neighbours = neighbours.OrderByDescending(kv => Math.Abs(kv.Value)).ThenBy(kv => kv.Key)
+                    .Take(RecoKnn.DefaultMaxSignals);
             }
-            else
+            var retainedNeighbours = neighbours.ToDictionary();
+            useL2 = retainedNeighbours.Count > 0;
+            if (useL2)
             {
-                useL2 = false;
+                usableIds.UnionWith(retainedNeighbours.Keys);
+                var knnRaw = RecoKnn.ScoreCandidates(candidates, embMap, retainedNeighbours);
+                knnFeatureScores = knnRaw.ToDictionary(kv => kv.Key, kv => RecoKnn.ToUnitInterval(kv.Value));
+                knnUnit = RecoNormalize.MinMaxByTitle(knnFeatureScores);
             }
         }
+
+        var signalResult = RecoSignals.SelectUsable(globalSignals, usableIds);
+        var nEff = signalResult.EffectiveN;
+        var n0 = await GetDoubleSettingAsync(SettingsKeys.RecoN0, RecoLearning.DefaultN0, cancellationToken);
+        var stage = RecoLearning.StageFromEffectiveN(nEff, n0);
+        var personalWeight = RecoLearning.PersonalWeight(nEff, n0);
+        var profile = RecoSparse.BuildProfile(signalResult.Signals, titleVectors);
+        var sparseRaw = RecoSparse.ScoreAll(profile, poolVectors);
+        var sparseNorm = RecoNormalize.MinMaxByTitle(sparseRaw);
+        var householdNorm = await LoadHouseholdNormAsync(profileId, weights, poolVectors, cancellationToken);
+        var slotWeight = RecoHousehold.SlotWeight(nEff, householdNorm is not null, n0);
 
         // a=0.4, b=0.6 when L2; a=1 when L1 only (§12.1).
         var weightSparse = useL2 ? 0.4 : 1.0;
@@ -252,35 +255,25 @@ public sealed class RecoBuildService(
                 .Where(r => r.ProfileId == profileId)
                 .Select(r => new { r.TitleId, r.Value })
                 .ToListAsync(cancellationToken);
-            var examples = new List<RecoLevel3Example>();
-            var titleById = titles.ToDictionary(t => t.Id);
-            foreach (var row in ratingRows)
-            {
-                if (!titleById.TryGetValue(row.TitleId, out var t))
-                {
-                    continue;
-                }
-
-                var sparse = sparseNorm.GetValueOrDefault(row.TitleId, 0.5);
-                var knn = knnUnit.GetValueOrDefault(row.TitleId, 0.5);
-                var priorT = priorById.TryGetValue(row.TitleId, out var ps) ? ps.Prior : 0.5;
-                examples.Add(new RecoLevel3Example(
-                    row.TitleId,
-                    RatingValues.IsPositive(row.Value),
-                    RecoLevel3.BuildFeatures(
-                        titleVectors.GetValueOrDefault(row.TitleId),
-                        sparse,
-                        knn,
-                        priorT,
-                        t.ReleaseYear,
-                        t.VoteTmdb,
-                        t.Popularity)));
-            }
+            var labels = ratingRows.ToDictionary(row => row.TitleId, row => RatingValues.IsPositive(row.Value));
+            var trainingTitles = titles.ToDictionary(
+                title => title.Id,
+                title => new RecoLevel3TrainingTitle(title.ReleaseYear, title.VoteTmdb, title.Popularity));
+            var priorScores = priorById.ToDictionary(entry => entry.Key, entry => entry.Value.Prior);
+            var examples = RecoLevel3Training.BuildExamples(
+                signalResult.Signals,
+                labels,
+                trainingTitles,
+                titleVectors,
+                embMap,
+                priorScores,
+                useL2,
+                n0);
 
             level3Scorer = level3Model.TryTrain(examples, minRatings, RecoEvalMetrics.Level3MinPerClass);
         }
 
-        var titleNames = await LoadTitleNamesAsync(poolIdSet, cancellationToken);
+        var titleNames = await LoadTitleNamesAsync(featureIds, cancellationToken);
         var termLabels = await LoadTermLabelsAsync(profile, cancellationToken);
         var positiveCandidates = RecoReasons.BuildPositiveCandidates(signalResult.Signals, titleVectors);
 
@@ -295,7 +288,7 @@ public sealed class RecoBuildService(
             var priorSlot = RecoHousehold.BlendPrior(prior, household, slotWeight);
             double? personal = null;
             double score;
-            if (nEff <= 0 || personalWeight <= 0 || profile.IsEmpty)
+            if (nEff <= 0 || personalWeight <= 0 || (profile.IsEmpty && !useL2))
             {
                 score = priorSlot;
             }
@@ -314,12 +307,17 @@ public sealed class RecoBuildService(
                 {
                     personal = level3Scorer.Score(RecoLevel3.BuildFeatures(
                         titleVectors.GetValueOrDefault(title.Id),
-                        sparse,
-                        knn,
+                        sparseRaw.GetValueOrDefault(title.Id),
+                        knnFeatureScores.GetValueOrDefault(title.Id, 0.5),
                         prior,
                         title.ReleaseYear,
                         title.VoteTmdb,
-                        title.Popularity));
+                        title.Popularity,
+                        weightSparse,
+                        weightKnn,
+                        personalWeight,
+                        hasSparse: !profile.IsEmpty,
+                        hasKnn: useL2 && embMap.ContainsKey(title.Id)));
                 }
 
                 score = RecoLearning.FuseScore(priorSlot, personal.Value, personalWeight);
@@ -412,6 +410,16 @@ public sealed class RecoBuildService(
         return newVersion;
     }
 
+    private async Task<RecoSignalWeights> LoadSignalWeightsAsync(CancellationToken cancellationToken) => new(
+        await GetDoubleSettingAsync(SettingsKeys.RecoWeightLove, RecoSignals.DefaultWeightLove, cancellationToken),
+        await GetDoubleSettingAsync(SettingsKeys.RecoWeightLike, RecoSignals.DefaultWeightLike, cancellationToken),
+        await GetDoubleSettingAsync(SettingsKeys.RecoWeightDislike, RecoSignals.DefaultWeightDislike, cancellationToken),
+        await GetDoubleSettingAsync(SettingsKeys.RecoWeightNotInterested, RecoSignals.DefaultWeightNotInterested, cancellationToken),
+        await GetDoubleSettingAsync(SettingsKeys.RecoWeightFavorite, RecoSignals.DefaultWeightFavorite, cancellationToken),
+        await GetDoubleSettingAsync(SettingsKeys.RecoWeightArrAdd, RecoSignals.DefaultWeightArrAdd, cancellationToken),
+        await GetDoubleSettingAsync(SettingsKeys.RecoWeightDownloaded, RecoSignals.DefaultWeightDownloaded, cancellationToken),
+        await GetDoubleSettingAsync(SettingsKeys.RecoWeightWatched, RecoSignals.DefaultWeightWatched, cancellationToken));
+
     private async Task<IReadOnlyList<RecoSignalTitleFacts>> LoadSignalFactsAsync(
         int profileId,
         CancellationToken cancellationToken)
@@ -479,12 +487,12 @@ public sealed class RecoBuildService(
     }
 
     private async Task<IReadOnlyDictionary<int, string>> LoadTitleNamesAsync(
-        HashSet<int> poolIds,
+        HashSet<int> featureIds,
         CancellationToken cancellationToken)
     {
         // Prefer en-US localization for reason chips; fall back to original title.
         var rows = await db.Titles.AsNoTracking()
-            .Where(t => poolIds.Contains(t.Id))
+            .Where(t => featureIds.Contains(t.Id))
             .Select(t => new
             {
                 t.Id,

@@ -328,6 +328,32 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
                     b.ToTable("AvailabilityEvents", (string)null);
                 });
 
+            modelBuilder.Entity("Pickarr.Core.Domain.Entities.CastPerson", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ImdbFetchedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ImdbId")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProfilePath")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("CastPeople", (string)null);
+                });
+
             modelBuilder.Entity("Pickarr.Core.Domain.Entities.CatalogSource", b =>
                 {
                     b.Property<int>("Id")
@@ -811,6 +837,12 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("CastFetchAttemptAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CastFetchedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("CastJson")
                         .HasColumnType("TEXT");
 
@@ -924,6 +956,27 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
                         .HasFilter("\"TmdbId\" IS NOT NULL");
 
                     b.ToTable("Titles", (string)null);
+                });
+
+            modelBuilder.Entity("Pickarr.Core.Domain.Entities.TitleCastMember", b =>
+                {
+                    b.Property<int>("TitleId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PersonId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("TitleId", "PersonId");
+
+                    b.HasIndex("PersonId");
+
+                    b.HasIndex("TitleId", "Position")
+                        .IsUnique();
+
+                    b.ToTable("TitleCastMembers", (string)null);
                 });
 
             modelBuilder.Entity("Pickarr.Core.Domain.Entities.TitleCredit", b =>
@@ -1268,6 +1321,25 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
                     b.Navigation("CatalogSource");
                 });
 
+            modelBuilder.Entity("Pickarr.Core.Domain.Entities.TitleCastMember", b =>
+                {
+                    b.HasOne("Pickarr.Core.Domain.Entities.CastPerson", "Person")
+                        .WithMany("TitleCastMembers")
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pickarr.Core.Domain.Entities.Title", "Title")
+                        .WithMany("CastMembers")
+                        .HasForeignKey("TitleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Person");
+
+                    b.Navigation("Title");
+                });
+
             modelBuilder.Entity("Pickarr.Core.Domain.Entities.TitleCredit", b =>
                 {
                     b.HasOne("Pickarr.Core.Domain.Entities.Person", "Person")
@@ -1395,6 +1467,11 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
                     b.Navigation("Events");
                 });
 
+            modelBuilder.Entity("Pickarr.Core.Domain.Entities.CastPerson", b =>
+                {
+                    b.Navigation("TitleCastMembers");
+                });
+
             modelBuilder.Entity("Pickarr.Core.Domain.Entities.Genre", b =>
                 {
                     b.Navigation("Localizations");
@@ -1420,6 +1497,8 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Pickarr.Core.Domain.Entities.Title", b =>
                 {
                     b.Navigation("Availabilities");
+
+                    b.Navigation("CastMembers");
 
                     b.Navigation("Favorites");
 

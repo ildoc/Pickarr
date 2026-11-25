@@ -203,7 +203,7 @@ MoSCoW priority: **M** for the feature MVP, **S** should, **C** could.
 
 | ID | Area | Requirement |
 |---|---|---|
-| NFR-REC-01 | Read | `GET /recommendations` and `GET /titles/{id}/similar` respond in under 300 ms (p95) on the install’s real pool. Scores are precomputed; the request filters by scope and page. |
+| NFR-REC-01 | Read | `GET /recommendations` responds in under 300 ms (p95) on the install’s real pool. Similar titles have no 300 ms budget: opening a title does not start a search. The dialog offers **Show similar titles** and immediately shows a loading indicator on request. Exact ranking and eligibility rules remain unchanged. |
 | NFR-REC-02 | Rebuild | Rebuild on the pool (union of enabled catalogs) and up to 500 signals in under 10 seconds on common CPU. To be measured (SP-R3). |
 | NFR-REC-03 | Embedding | Background computation, with a thread cap, without blocking catalog sync and *arr*. |
 | NFR-REC-04 | Memory | Quantized model plus pool vectors stay on the order of a few hundred MB. To be measured. |
@@ -223,7 +223,7 @@ MoSCoW priority: **M** for the feature MVP, **S** should, **C** could.
 | BR-REC-01 | **One rating per profile and title.** Values `Love`, `Like`, `Dislike`, or `NotInterested`. A new choice replaces the previous one. Removal deletes the row. Every change is a row in `RatingEvents` with the same `ProfileId`. |
 | BR-REC-02 | **Weights.** *Love* **+1.5**. *Like* **+1.0**. *Dislike* **−1.0**. *Not interested* **−0.75**. *My list* **+0.5** (temporary interest / watch-later signal: leaves the profile when the favorite is removed or a rating is assigned). *Hide* **0** (exclusion only). *Added to Sonarr/Radarr* **+0.6**. *Downloaded* **+0.4**. Implicit signals are summed and capped to **[0, +1]**. With an explicit rating only that counts. Weights are configurable. |
 | BR-REC-03 | **Decay.** Optional, half-life in days. Default: none. |
-| BR-REC-04 | **Effective count.** `N_eff = Σ \|s_i\|` over titles with a signal. Governs the profile weight versus the prior (§12.2). |
+| BR-REC-04 | **Effective count.** `N_eff = Σ \|s_i\|` over this profile's titles with usable features. A title counts once if it has a nonempty sparse vector in the pool vocabulary or is retained as a neighbour by active embedding kNN. This includes titles on disabled sources or with no availability. Signals with neither feature do not increase confidence. Only pool titles can be recommended. |
 | BR-REC-05 | **Stages.** `cold` if `N_eff < 5`; `warming` if `5 ≤ N_eff < N0` (default 30); `personalized` if `N_eff ≥ N0`. Informational in UI. Weight grows continuously. |
 | BR-REC-06 | **List exclusions.** Titles that have a rating or are *Hide*. The *explore* injection cannot reintroduce them. By default also titles with `ArrLibraryItem` in *Downloaded*, *Downloading*, *Partial*, or *Missing* state (filter disableable). Those titles’ score can still be computed: exclusion is at read time. |
 | BR-REC-07 | **Membership.** Scope `source`: an `Availability` exists with `CatalogSourceId` equal to the requested source. Scope `enabled`: an `Availability` exists whose source has `IsEnabled` and whose `Provider.IsEnabled` is true. In both cases `RemovedAt` is irrelevant. |
@@ -299,7 +299,7 @@ MoSCoW priority: **M** for the feature MVP, **S** should, **C** could.
 ### UC-REC-03 — Similar titles
 
 - **Actor:** User.
-- **Flow:** in the dialog, *Similar titles* calls `GET /titles/{id}/similar`. Results are titles from the `enabled` pool, ordered by proximity, with `places`. Click opens the dialog.
+- **Flow:** select *Show similar titles* in the dialog to call `GET /titles/{id}/similar`. A spinner is shown while waiting; an empty result or failure is stated explicitly, with a retry on failure. Selecting a result opens its dialog without starting another search.
 
 ### UC-REC-04 — Onboarding
 
@@ -630,7 +630,7 @@ Terms, in order of available data:
 | `d:{personId}` | `TitleCredits` `Director` or `Creator` | after §11.2 |
 | `c:{country}` | `OriginCountries` | if the column exists |
 
-TF-IDF weight (IDF on the pool). Dimension weights: genres 1.0; keywords 1.0; directors/creators 0.8; cast 0.5; language and country 0.3; decade 0.3; type 0.5. L2 vector.
+Vocabulary and IDF are fitted on the candidate pool alone. A signalled title outside the pool uses the same IDF; terms absent from the pool are discarded before L2 normalization. If no term remains, that title supplies no sparse evidence. External titles do not enter candidate score normalization or prior statistics. Dimension weights: genres 1.0; keywords 1.0; directors/creators 0.8; cast 0.5; language and country 0.3; decade 0.3; type 0.5.
 
 ```
 P = Σ_i s_i · x_i
@@ -643,7 +643,7 @@ Until keywords and credits are persisted, level 1 uses genres, language, decade,
 
 ### 12.4 Level 2 — kNN
 
-For every title in the pool, the **K** nearest titles with a signal (K = 10) by dot product (unit vectors):
+For every pool title with an embedding, kNN can use cached signal embeddings from inside or outside the pool. Only nonzero, finite vectors from the active model with a compatible pool dimension are eligible. Without a usable sparse profile, active kNN can still personalize. No provider lookup or coverage expansion is needed. The **K** nearest titles with a signal (K = 10) are selected by dot product (unit vectors):
 
 ```
 neighbors(t) = top-K over {i : s_i ≠ 0} by sim(t, i) = e_t · e_i
@@ -654,7 +654,7 @@ Knn(t)       = Σ sim(t,i)^γ · s_i  /  Σ sim(t,i)^γ          γ = 3
 - With fewer than K neighbors above `sim_min` (default 0.25), the score is damped toward 0.5.
 - Neighbors may sit on another source: that is the single taste profile **per household profile**.
 
-**Similar titles** (FR-REC-RC-09): for title `q`, neighbors in the pool by `e_q · e_t`. Without embeddings, sparse cosine of level 1. Then keep only titles with `enabled` membership (BR-REC-14), remove rated ones and, if the library filter is on, those in library. Order is similarity. The response includes `places`.
+**Similar titles** (FR-REC-RC-09): for title `q`, exact dot-product neighbors are evaluated over every eligible title in the enabled pool. If an embedding is missing, sparse level-1 cosine is used as fallback; a title with an embedding does not receive a duplicate sparse result. Sparse fallback is added only for titles absent from the embedding map. Then remove rated, watched and, if enabled, library titles, plus `q` itself. Merge TMDB outgoing edges after local similarity, exclude ineligible IDs, order deterministically by descending merged similarity and then title ID, and return `places`.
 
 ### 12.5 Fusion
 
@@ -669,9 +669,11 @@ Score(t)    = (1 − w) · Prior'(t) + w · Personal(t)     // FuseScore; Prior'
 
 ### 12.6 Level 3 — optional
 
-With at least `reco.ml.minRatings` explicit ratings (default 100, at least 20 per class), regularized logistic in ML.NET on features `[x_t hashed, Sparse, Knn, Prior, year, vote, popularity]`, target *Like* versus *Dislike*.
+With at least `reco.ml.minRatings` explicit ratings (default 100, at least 20 per class), regularized logistic in ML.NET learns *Like* versus *not Like*. Features include `[x_t hashed, raw Sparse cosine, mapped Knn score, Prior, sparse/knn fusion weights, personal weight, component availability, year, vote, popularity]`. The feature scores are not pool-min-max normalized; weights and availability flags make the actual fusion inputs explicit. Training features are cross-fitted in five deterministic partitions: each partition's features are computed without any of its target ratings, including the example's own label. The evaluator and recommendation rebuild use the same training path.
 
-Replaces `Personal` only if in offline evaluation it beats level 2 with a sufficient margin and sample. Outside the MVP (D-REC-06).
+The offline gate compares level 3 with the **effective combined score** (prior fused with the available sparse/kNN components), not the standalone level-2/kNN metric. Both scores must use the same positive folds and the same unrated candidates; the comparison needs at least 10 matching folds, at least 20 Love/Like and 20 Dislike ratings, and level 3 must exceed the combined AUC by at least 0.01. Missing data, classes, an unavailable combined metric, or incomplete folds keep level 3 inactive. `Level3SkipReason` distinguishes `below_min_ratings`, `below_min_per_class`, `insufficient_retrieval_data`, `l3_unavailable`, `insufficient_l3_folds`, and the new `did_not_beat_combined` value.
+
+Replaces `Personal` only when that offline gate passes. Outside the MVP (D-REC-06).
 
 ### 12.7 Reasons
 
@@ -1010,11 +1012,20 @@ There is no separate display language: `CatalogSource.MetadataLanguage` is used.
 
 ### 17.3 Offline evaluation
 
-Leave-one-out on ratings: recompute the profile without that title and compare its score with a sample of unrated pool titles.
+The evaluator uses the admin profile's ratings in the enabled-source pool. It holds out each selected rating and recomputes the profile without it. For retrieval, only Love and Like are positives; their scores are compared with at most 40 **unrated** pool titles per fold. Neither Dislike nor NotInterested is an unrated title. These comparisons do not assume unrated titles are dislikes.
 
-Metrics: AUC, hit@10, AUC *Like* versus *Dislike*. Comparison among prior, level 1, level 2, combination, level 3. The report includes the count. Under about 30 ratings it warns that the number is low.
+The report compares prior, level 1, level 2 when available, combined, and level 3 when trained. Each level reports its actual fold count, pairwise AUC and hit@10. Pairwise AUC gives an exact score tie half credit; hit@10 uses optimistic ties (a hit if fewer than ten comparisons score strictly higher). If there are no positives or no unrated titles, retrieval metrics are `null`, not a neutral AUC or a guaranteed hit. Otherwise each fold uses `min(40, unratedPoolCount)` comparisons; samples are deterministic for the same ordered pool and input.
 
-Used to tune `a`, `b`, `N0`, `γ`, `K` and to decide level 3. Not to chase decimals with few ratings.
+Combined-score AUC compares Love/Like against Dislike and, separately, against NotInterested. Each scored title is held out from its own profile; these comparisons are not a common-profile or temporal test. A class comparison is `null` if either class is absent, and exact ties receive half credit. Up to 50 titles per group (Love/Like together, Dislike, NotInterested) are selected by title ID; this is not a representative random sample. The report includes `ratingCount`, `likeCount` (Love plus Like), `dislikeCount`, `notInterestedCount`, `unratedPoolCount`, `unratedSamplePerRetrievalFold`, and the three `evaluated*Count` fields. Older saved reports can lack the new fields. Under 30 ratings it warns that the sample is low; inspect the actual class and fold counts as well.
+
+These are diagnostic estimates, not evidence of online improvement. Cross-fitting prevents a rated title's own target from contributing to its supervised training features, but does not make the evaluator temporal or establish online improvement. `Level2` reports the standalone embedding component when available; the promotion gate uses `Combined`, which applies the current component availability, fusion weights, and prior. An unavailable retrieval comparison or a mismatch in level-3 and combined fold counts cannot activate level 3. Suggested parameters are defaults, not a result of tuning.
+
+Protected snapshot comparisons may be repeated on the same input, split, seed and
+pinned model artifacts. A post-correction report must state the result separately
+from T08 and must not infer model superiority or production performance from local
+timings. Snapshots and reports stay outside the repository and data directories;
+the benchmark never starts the application, jobs or migrations. Cluster
+measurements require separate operational approval.
 
 ### 17.4 Events
 

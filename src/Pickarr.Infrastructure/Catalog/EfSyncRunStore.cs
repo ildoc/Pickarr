@@ -70,6 +70,19 @@ public sealed class EfSyncRunStore(
         await PruneHistoryForAsync(run.Kind, run.CatalogSourceId, cancellationToken);
     }
 
+    public async Task PartiallySucceedAsync(
+        Guid id,
+        string? errorMessage = null,
+        CancellationToken cancellationToken = default)
+    {
+        var run = await RequireAsync(id, cancellationToken);
+        run.Status = SyncRunStatuses.PartiallySucceeded;
+        run.ErrorMessage = Truncate(errorMessage);
+        run.FinishedAt = clock.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        await PruneHistoryForAsync(run.Kind, run.CatalogSourceId, cancellationToken);
+    }
+
     public async Task FailAsync(Guid id, string errorMessage, CancellationToken cancellationToken = default)
     {
         // A failed insert inside a rolled-back transaction stays Added. Saving it again can

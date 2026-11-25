@@ -19,6 +19,8 @@ public sealed class PickarrDbContext(DbContextOptions<PickarrDbContext> options)
     public DbSet<TitleKeyword> TitleKeywords => Set<TitleKeyword>();
     public DbSet<Person> People => Set<Person>();
     public DbSet<TitleCredit> TitleCredits => Set<TitleCredit>();
+    public DbSet<CastPerson> CastPeople => Set<CastPerson>();
+    public DbSet<TitleCastMember> TitleCastMembers => Set<TitleCastMember>();
     public DbSet<TitleTmdbRecommendation> TitleTmdbRecommendations => Set<TitleTmdbRecommendation>();
     public DbSet<Availability> Availabilities => Set<Availability>();
     public DbSet<AvailabilityEvent> AvailabilityEvents => Set<AvailabilityEvent>();

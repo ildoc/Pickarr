@@ -98,7 +98,13 @@ public sealed record TitleDetailDto(
     string MetadataStatus,
     IReadOnlyList<TitleAvailabilityDto> Availability,
     ArrDetailDto Arr,
-    IReadOnlyList<string> Cast);
+    IReadOnlyList<string> Cast,
+    IReadOnlyList<CastMemberDto> CastMembers);
+
+public sealed record CastMemberDto(
+    string Name,
+    string? PhotoUrl,
+    string? ImdbUrl);
 
 public sealed record TitleRatingsDto(double? Tmdb, int? TmdbVotes);
 

@@ -34,11 +34,12 @@ public static class RecoSparse
     public static int DecadeOf(int year) => year / 10 * 10;
 
     /// <summary>
-    /// Builds L2-normalized TF-IDF vectors for every title in the pool.
-    /// IDF is computed on the pool; raw TF is binary presence × dimension weight.
+    /// Builds L2-normalized TF-IDF vectors for pool titles and optional external evidence.
+    /// Vocabulary and IDF are fitted on the pool only; TF is binary presence × dimension weight.
     /// </summary>
     public static IReadOnlyDictionary<int, SparseVector> BuildTitleVectors(
-        IReadOnlyList<RecoSparseTitleFeatures> pool)
+        IReadOnlyList<RecoSparseTitleFeatures> pool,
+        IReadOnlyList<RecoSparseTitleFeatures>? external = null)
     {
         if (pool.Count == 0)
         {
@@ -58,20 +59,29 @@ public static class RecoSparse
             }
         }
 
-        var n = pool.Count;
-        var result = new Dictionary<int, SparseVector>(pool.Count);
-        foreach (var title in pool)
+        if (external is not null)
         {
-            var raw = rawByTitle[title.TitleId];
+            foreach (var title in external)
+            {
+                rawByTitle.TryAdd(title.TitleId, CollectWeightedTerms(title));
+            }
+        }
+
+        var result = new Dictionary<int, SparseVector>(rawByTitle.Count);
+        foreach (var (titleId, raw) in rawByTitle)
+        {
             var weighted = new Dictionary<string, double>(raw.Count, StringComparer.Ordinal);
             foreach (var (term, tf) in raw)
             {
-                var df = documentFrequency[term];
-                var idf = Math.Log((n + 1.0) / (df + 1.0)) + 1.0;
-                weighted[term] = tf * idf;
+                // Project evidence onto the candidate vocabulary; external-only terms cannot match.
+                if (documentFrequency.TryGetValue(term, out var df))
+                {
+                    var idf = Math.Log((pool.Count + 1.0) / (df + 1.0)) + 1.0;
+                    weighted[term] = tf * idf;
+                }
             }
 
-            result[title.TitleId] = SparseVector.FromWeights(weighted);
+            result[titleId] = SparseVector.FromWeights(weighted);
         }
 
         return result;

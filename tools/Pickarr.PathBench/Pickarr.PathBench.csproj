@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Pickarr.Infrastructure\Pickarr.Infrastructure.csproj" />
+    <Compile Include="..\Pickarr.RecoBench\Snapshot.cs" Link="Snapshot.cs" />
+  </ItemGroup>
+</Project>

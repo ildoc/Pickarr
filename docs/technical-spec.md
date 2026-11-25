@@ -223,12 +223,16 @@ Unique index `(ProviderId, CountryCode)`.
 | Popularity | real null | |
 | OriginalLanguage | text null | |
 | PosterPath, BackdropPath | text null | neutral TMDB paths |
+| CastFetchedAt | datetime null | null until detail cast is completed successfully; stale after 30 days |
+| CastFetchAttemptAt | datetime null | last retry attempt; temporarily gates a failed title for one hour |
 | MetadataStatus | text | `Pending` / `Ready` / `Unmapped` / `Failed` |
 | MetadataFetchedAt | datetime null | |
 | MetadataAttempts | int | |
 | CreatedAt, UpdatedAt | datetime | |
 
 Indexes: partial unique `(TmdbType, TmdbId)` (`WHERE TmdbId IS NOT NULL`), `TvdbId`, `ImdbId`, `(MetadataStatus)`, `(ReleaseYear)`.
+
+**Detailed cast** is stored separately from recommendation credits. `CastPeople` contains the shared TMDB person id, name, optional profile path, and optional IMDb person id. `TitleCastMembers` links a title to a person with a unique position. A completed empty fetch is represented by `Titles.CastFetchedAt` being non-null with no associations; before the first fetch, the API may expose the legacy `cast` name array as a fallback.
 
 **`TitleLocalizations`** — PK `(TitleId, Language)`
 
@@ -542,6 +546,7 @@ Configured in Sonarr/Radarr (*Settings → Connect → Webhook*), method `POST`.
 | `CatalogResumeJob` | daily (and after monthly reset) | sync | 1 | — |
 | `EnrichmentJob` | enqueued after syncs + every hour | default | 1 | 3 with backoff |
 | `MetadataRefreshJob` | daily, batches | default | 1 | 3 |
+| `DetailCastJob` | hourly, up to 20 batches of 50; manual from admin | default | 1 | per-title failure is recorded and retried on a later run |
 | `LeavingSyncJob(country)` | daily | sync | 1 per country (one Watchmode call, fan-out to sources) | 2 |
 | `ArrSyncJob(kind)` | interval (default 15 min) | arr | 1 per kind | 2 |
 | `ArrRefreshItemJob(kind, arrId)` | after add/delete/webhook | arr | per item | 3 |
@@ -661,6 +666,7 @@ on network/auth error: MetadataAttempts++, MetadataStatus = Failed
 - `MetadataRefreshJob`: every day refreshes a batch of titles with `MetadataFetchedAt` older than 30 days and active availability (FR-MET-05).
 - Mapping fallback: missing `tmdb_id` and present `ImdbId` → `/find`; otherwise `Unmapped` (FR-CAT-12).
 - The enrichment `SyncRun` fails only if TMDB rejects requests (e.g. 401) and no title becomes Ready; 404/`Unmapped` alone leave the run as Succeeded.
+- `DetailCastJob` selects titles with a TMDB id whose `CastFetchedAt` is null or older than 30 days, prioritizing never-fetched titles and stable title id order. It fetches up to 12 ordered cast members and person IMDb ids, updates shared cast people and title positions, and leaves existing associations intact when a title fails. GET title detail reads only local data and returns additive `castMembers` entries (`name`, `photoUrl`, `imdbUrl`) while preserving the legacy `cast` name array.
 
 ### 6.7 Sonarr/Radarr library sync (`ArrSyncJob`)
 
@@ -824,6 +830,11 @@ Favorites are not filtered on the catalog: use `GET /favorites` and the UI route
   "backdropUrl": "https://image.tmdb.org/t/p/w780/def.jpg",
   "ratings": { "tmdb": 7.8, "tmdbVotes": 1520 },
   "links": { "tmdb": "https://www.themoviedb.org/tv/987654", "imdb": "https://www.imdb.com/title/tt1234567/", "tvdb": null },
+  "cast": ["Actor One", "Actor Two"],
+  "castMembers": [
+    { "name": "Actor One", "photoUrl": "https://image.tmdb.org/t/p/w185/actor-one.jpg", "imdbUrl": "https://www.imdb.com/name/nm0000001/" },
+    { "name": "Actor Two", "photoUrl": null, "imdbUrl": null }
+  ],
   "isFavorite": true,
   "rating": "like",
   "metadataStatus": "ready",

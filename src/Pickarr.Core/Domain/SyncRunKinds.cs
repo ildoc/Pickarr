@@ -13,6 +13,7 @@ public static class SyncRunKinds
     public const string RecoEmbedding = "RecoEmbedding";
     public const string RecoModelDownload = "RecoModelDownload";
     public const string RecoEval = "RecoEval";
+    public const string DetailCast = "DetailCast";
 }
 
 public static class SyncRunStatuses

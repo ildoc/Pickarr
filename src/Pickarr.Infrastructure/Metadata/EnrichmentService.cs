@@ -278,18 +278,33 @@ public sealed class EnrichmentService(
     {
         var tmdbId = title.TmdbId!.Value;
         var isMovie = string.Equals(title.TmdbType, "movie", StringComparison.OrdinalIgnoreCase);
-        var details = isMovie
-            ? await metadata.GetMovieAsync(tmdbId, language, cancellationToken)
-            : await metadata.GetTvAsync(tmdbId, language, cancellationToken);
+        TmdbTitleDetails? details = null;
+        try
+        {
+            details = isMovie
+                ? await metadata.GetMovieAsync(tmdbId, language, cancellationToken)
+                : await metadata.GetTvAsync(tmdbId, language, cancellationToken);
+        }
+        catch (TmdbResourceNotFoundException)
+        {
+        }
+
         if (details is not null)
         {
             return details;
         }
 
         // Watchmode occasionally stores the wrong TMDB media type; try the other endpoint once.
-        var alternate = isMovie
-            ? await metadata.GetTvAsync(tmdbId, language, cancellationToken)
-            : await metadata.GetMovieAsync(tmdbId, language, cancellationToken);
+        TmdbTitleDetails? alternate = null;
+        try
+        {
+            alternate = isMovie
+                ? await metadata.GetTvAsync(tmdbId, language, cancellationToken)
+                : await metadata.GetMovieAsync(tmdbId, language, cancellationToken);
+        }
+        catch (TmdbResourceNotFoundException)
+        {
+        }
         if (alternate is null)
         {
             return null;

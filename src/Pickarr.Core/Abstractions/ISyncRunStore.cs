@@ -17,6 +17,7 @@ public interface ISyncRunStore
 
     Task PauseAsync(Guid id, string checkpointJson, CancellationToken cancellationToken = default);
     Task SucceedAsync(Guid id, CancellationToken cancellationToken = default);
+    Task PartiallySucceedAsync(Guid id, string? errorMessage = null, CancellationToken cancellationToken = default);
     Task FailAsync(Guid id, string errorMessage, CancellationToken cancellationToken = default);
     Task MarkNeedsReviewAsync(Guid id, string? errorMessage = null, CancellationToken cancellationToken = default);
 
