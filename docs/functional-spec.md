@@ -206,7 +206,7 @@ The title detail may also show up to 12 ordered cast members. Cast photos and IM
 | FR-DET-03 | Shows the library status in a compact section; series library season details and monitoring are expandable. | M |
 | FR-DET-04 | Stocks: favorite, **vote** (*Like* / *Dislike*), add to Sonarr/Radarr, delete from Sonarr/Radarr, update status. | M |
 | FR-DET-05 | "Search now" action on a title already in the library (launches the search in Sonarr/Radarr). | S |
-| FR-DET-06 | For titles in the library, offer a link to the title in the Sonarr/Radarr web interface when its cached title slug is available. The configured URL must be reachable from the browser. | C |
+| FR-DET-06 | For titles in the library, offer a link to the title in the Sonarr/Radarr web interface. When the cached title slug is missing, refresh the library on request and report errors. The configured URL must be reachable from the browser. | C |
 | FR-DET-07 | If the title is available in other configured sources (e.g. also on Netflix US), the tab indicates this. | C |
 | FR-DET-08 | For a series already in Sonarr, enable or disable monitoring for each season from the library status table. | M |
 

@@ -35,7 +35,7 @@ Opening a title keeps you on the route that opened it. The detail dialog shows:
 - Up to 12 cast members in a horizontally scrollable row, with TMDB photos or accessible placeholders and IMDb links when available
 - Availability on the current source (added / leaving / removed)
 - Compact shared Arr library status (monitor and download progress), with expandable library season details for series
-- Open an existing library title in Sonarr or Radarr in a new tab when its title slug is available. Existing entries acquire their slug at the next library sync or status refresh; the configured Arr URL must be reachable from your browser.
+- Open an existing library title in Sonarr or Radarr in a new tab. If its cached title slug is missing, Pickarr refreshes the matching library first; allow pop-ups for this action. The configured Arr URL must be reachable from your browser.
 - Actions: favorite, rate, Add / Delete, Search now, Refresh status
 - When recommendations are enabled, select **Show similar titles** to start a search. A spinner shows that the search is running; opening a title does not start it automatically.
 - Series seasons are newest first; episodes oldest first. Adding a series sends only selected seasons.

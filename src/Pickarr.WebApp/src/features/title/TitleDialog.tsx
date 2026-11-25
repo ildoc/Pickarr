@@ -49,6 +49,7 @@ export function TitleDialog({
   const queryClient = useQueryClient()
   const [addOpen, setAddOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [openArrError, setOpenArrError] = useState<string | null>(null)
 
   const detail = useQuery({
     queryKey: ['title', titleId, sourceId],
@@ -153,6 +154,34 @@ export function TitleDialog({
 
   const close = () => dialogRef.current?.close()
 
+  const openArrAfterRefresh = async () => {
+    setOpenArrError(null)
+    const tab = window.open('', '_blank')
+    if (!tab) {
+      setOpenArrError(t('arr.openBlocked'))
+      return
+    }
+    tab.opener = null
+    let arr: Awaited<ReturnType<typeof refreshTitleArr>>
+    try {
+      arr = await refresh.mutateAsync()
+    } catch {
+      tab.close()
+      return
+    }
+    if (!arr?.externalUrl) {
+      tab.close()
+      setOpenArrError(t('arr.openUnavailable'))
+      return
+    }
+    try {
+      tab.location.replace(arr.externalUrl)
+    } catch {
+      tab.close()
+      setOpenArrError(t('arr.openFailed'))
+    }
+  }
+
   return (
     <dialog
       ref={dialogRef}
@@ -202,19 +231,27 @@ export function TitleDialog({
                 <h3 className="mb-1 text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
                   {t('title.availability')}
                 </h3>
-                <ul className="space-y-1 text-sm">
+                <ul className="space-y-2 text-sm">
                   {detail.data.availability.map((a) => (
                     <li key={a.sourceId}>
                       {a.countryCode}:{' '}
                       {a.removedAt
-                        ? t('title.removedOn', { date: formatDate(a.removedAt, i18n.language) })
+                        ? t('title.removed')
                         : a.addedAt
-                          ? t('title.availableFrom', {
-                              date: formatDate(a.addedAt, i18n.language),
-                            })
+                          ? t('title.availableSince')
                           : t('title.availableNow')}
+                      {(a.removedAt || a.addedAt) && (
+                        <time className="block whitespace-nowrap" dateTime={a.removedAt ?? a.addedAt ?? undefined}>
+                          {formatDate(a.removedAt ?? a.addedAt, i18n.language)}
+                        </time>
+                      )}
                       {a.leavingDate
-                        ? ` · ${t('title.leavingOn', { date: a.leavingDate })}`
+                        ? (
+                          <div>
+                            {t('title.leaving')}
+                            <time className="block whitespace-nowrap" dateTime={a.leavingDate}>{a.leavingDate}</time>
+                          </div>
+                        )
                         : ''}
                     </li>
                   ))}
@@ -355,6 +392,18 @@ export function TitleDialog({
                           })}
                         </a>
                       )}
+                      {detail.data.arr.canDelete && !detail.data.arr.externalUrl && (
+                        <button
+                          type="button"
+                          disabled={refresh.isPending}
+                          onClick={() => void openArrAfterRefresh()}
+                          className="rounded-md bg-white/10 px-3 py-1.5 text-sm hover:bg-white/15 disabled:opacity-50"
+                        >
+                          {t('arr.openIn', {
+                            kind: detail.data.arr.kind === 'radarr' ? 'Radarr' : 'Sonarr',
+                          })}
+                        </button>
+                      )}
                       {detail.data.arr.addBlockedReason === 'missingTvdbId' && (
                         <span className="text-sm text-[var(--muted)]">{t('arr.missingTvdbId')}</span>
                       )}
@@ -362,6 +411,7 @@ export function TitleDialog({
                         <span className="text-sm text-[var(--muted)]">{t('arr.missingTmdbId')}</span>
                       )}
                     </div>
+                    {openArrError && <p role="alert" className="text-sm text-red-300">{openArrError}</p>}
                   </section>
 
                   <AddToArrDialog
@@ -397,10 +447,20 @@ export function TitleDialog({
                     id="title-dialog-cast"
                     className="mb-2 text-sm font-medium uppercase tracking-wide text-[var(--muted)]"
                   >
-                    {t('title.cast')}
+                    {detail.data.links.imdb ? (
+                      <a
+                        href={`${detail.data.links.imdb.replace(/\/+$/, '')}/fullcredits/`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={t('title.openCastOnImdb')}
+                        className="underline hover:text-[var(--text)]"
+                      >
+                        {t('title.cast')}
+                      </a>
+                    ) : t('title.cast')}
                   </h3>
                   <div
-                    className="flex max-w-full gap-3 overflow-x-auto pb-1"
+                    className="flex max-w-full gap-3 overflow-x-auto pb-4"
                     role="list"
                     aria-label={t('title.cast')}
                   >

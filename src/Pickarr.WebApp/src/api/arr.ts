@@ -64,12 +64,12 @@ export async function postArrTest(body: {
   return (await response.json()) as ArrTestResponse
 }
 
-export async function refreshTitleArr(titleId: number) {
+export async function refreshTitleArr(titleId: number): Promise<TitleDetail['arr'] | null> {
   const response = await fetch(`/api/v1/titles/${titleId}/arr/refresh`, { method: 'POST' })
   if (!response.ok) {
     throw new ApiError(`Refresh failed: ${response.status}`, response.status)
   }
-  return response.json()
+  return response.json() as Promise<TitleDetail['arr'] | null>
 }
 
 export async function postTitleArr(titleId: number, body: ArrAddBody): Promise<TitleDetail['arr']> {

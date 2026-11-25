@@ -6,7 +6,7 @@ import { I18nextProvider } from 'react-i18next'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchTitle } from '../../api/catalog'
-import { setTitleSeasonMonitoring } from '../../api/arr'
+import { refreshTitleArr, setTitleSeasonMonitoring } from '../../api/arr'
 import { setRating } from '../../api/ratings'
 import { fetchSettings } from '../../api/settings'
 import type { TitleDetail } from '../../api/types'
@@ -20,7 +20,7 @@ vi.mock('../../api/catalog', () => ({
 }))
 
 vi.mock('../../api/arr', () => ({
-  refreshTitleArr: vi.fn(async () => undefined),
+  refreshTitleArr: vi.fn(async () => null),
   setTitleSeasonMonitoring: vi.fn(async () => undefined),
 }))
 
@@ -183,6 +183,57 @@ describe('TitleDialog ratings', () => {
     }
   })
 
+  it('keeps each availability date together with its status', async () => {
+    const base = await vi.mocked(fetchTitle)(42)
+    vi.mocked(fetchTitle).mockResolvedValue({
+      ...base,
+      availability: [
+        { sourceId: 1, countryCode: 'IT', addedAt: '2026-11-10T12:00:00Z', removedAt: null, leavingDate: '2026-12-01' },
+        { sourceId: 2, countryCode: 'US', addedAt: '2026-11-01T12:00:00Z', removedAt: '2026-11-20T12:00:00Z', leavingDate: null },
+      ],
+    })
+    renderDialog()
+
+    await screen.findByText(/IT: Available since/)
+    expect(screen.getByText('Nov 10, 2026')).toHaveClass('whitespace-nowrap')
+    expect(screen.getByText('2026-12-01')).toHaveClass('whitespace-nowrap')
+    expect(screen.getByText(/US: Removed on/).textContent).toContain('Nov 20, 2026')
+  })
+
+  it('refreshes a missing Arr link before opening the title', async () => {
+    const base = await vi.mocked(fetchTitle)(42)
+    const arr = { ...base.arr, canDelete: true, addBlockedReason: 'alreadyInLibrary', arrId: 7 }
+    vi.mocked(fetchTitle).mockResolvedValue({ ...base, arr })
+    vi.mocked(refreshTitleArr).mockResolvedValue({ ...arr, externalUrl: 'http://radarr/movie/dialog' })
+    const tab = { opener: null, close: vi.fn(), location: { replace: vi.fn() } }
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window)
+    const user = userEvent.setup()
+    renderDialog()
+
+    await user.click(await screen.findByRole('button', { name: 'Open in Radarr' }))
+    await waitFor(() => expect(tab.location.replace).toHaveBeenCalledWith('http://radarr/movie/dialog'))
+    expect(refreshTitleArr).toHaveBeenCalledWith(42)
+    open.mockRestore()
+  })
+
+  it('reports an unavailable link after refreshing and closes the new tab', async () => {
+    const base = await vi.mocked(fetchTitle)(42)
+    vi.mocked(fetchTitle).mockResolvedValue({
+      ...base,
+      arr: { ...base.arr, canDelete: true, addBlockedReason: 'alreadyInLibrary', arrId: 7 },
+    })
+    vi.mocked(refreshTitleArr).mockResolvedValue(null)
+    const tab = { opener: null, close: vi.fn() }
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window)
+    const user = userEvent.setup()
+    renderDialog()
+
+    await user.click(await screen.findByRole('button', { name: 'Open in Radarr' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('The title link is unavailable')
+    expect(tab.close).toHaveBeenCalled()
+    open.mockRestore()
+  })
+
   it('collapses library season details without hiding monitoring or the Sonarr link', async () => {
     const base = await vi.mocked(fetchTitle)(42)
     vi.mocked(fetchTitle).mockResolvedValue({
@@ -226,7 +277,7 @@ describe('TitleDialog ratings', () => {
       posterUrl: null,
       backdropUrl: null,
       ratings: { tmdb: null, tmdbVotes: null },
-      links: { tmdb: null, imdb: null, tvdb: null },
+      links: { tmdb: null, imdb: 'https://www.imdb.com/title/tt1234567/', tvdb: null },
       isFavorite: false,
       isWatched: false,
       rating: null,
@@ -263,7 +314,9 @@ describe('TitleDialog ratings', () => {
     renderDialog()
 
     const cast = await screen.findByRole('list', { name: 'Cast' })
-    expect(cast).toHaveClass('overflow-x-auto', 'max-w-full')
+    expect(cast).toHaveClass('overflow-x-auto', 'max-w-full', 'pb-4')
+    expect(screen.getByRole('link', { name: 'Cast' })).toHaveAttribute('href', 'https://www.imdb.com/title/tt1234567/fullcredits/')
+    expect(screen.getByRole('link', { name: 'Cast' })).toHaveAttribute('target', '_blank')
     expect(cast.querySelectorAll('[role="listitem"]')).toHaveLength(2)
     expect(screen.getByAltText('Actor One')).toBeTruthy()
     expect(screen.getByText('Actor Two')).toBeTruthy()
