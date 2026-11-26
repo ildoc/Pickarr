@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { I18nextProvider } from 'react-i18next'
 import { MemoryRouter } from 'react-router-dom'
@@ -71,5 +71,21 @@ describe('TitleGrid', () => {
     expect(screen.queryByRole('link', { name: /Tail title/ })).toBeNull()
     Object.defineProperty(window, 'innerHeight', { configurable: true, value: 768 })
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 })
+  })
+
+  it('still shows cards after a long scroll', () => {
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 })
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 })
+    const items = Array.from({ length: 80 }, (_, index) => card(index + 1, `Card ${index + 1}`))
+    renderGrid(items)
+    for (let y = 0; y <= 4000; y += 200) {
+      Object.defineProperty(window, 'scrollY', { configurable: true, value: y })
+      act(() => {
+        window.dispatchEvent(new Event('scroll'))
+      })
+    }
+    expect(screen.getAllByRole('link').length).toBeGreaterThan(0)
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 768 })
   })
 })
