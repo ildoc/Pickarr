@@ -166,6 +166,49 @@ public sealed class WatchmodeCatalogProviderTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetPlanCountriesAsync_keeps_only_regions_enabled_on_the_plan()
+    {
+        _server
+            .Given(Request.Create().WithPath("/v1/regions/").UsingGet())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""
+                    [
+                      {"country":"US","name":"USA","plan_enabled":true},
+                      {"country":"IT","name":"Italy","plan_enabled":true},
+                      {"country":"GB","name":"United Kingdom","plan_enabled":false}
+                    ]
+                    """));
+
+        var provider = await CreateProviderAsync();
+        var countries = await ((WatchmodeCatalogProvider)provider).GetPlanCountriesAsync();
+
+        countries.ShouldBe(["US", "IT"], ignoreOrder: true);
+        countries.ShouldNotContain("GB");
+    }
+
+    [Fact]
+    public async Task ListTitlesAsync_includes_the_watchmode_message_when_the_region_is_rejected()
+    {
+        _server
+            .Given(Request.Create().WithPath("/v1/list-titles/").UsingGet())
+            .RespondWith(Response.Create()
+                .WithStatusCode(400)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("""
+                    {"success":false,"statusCode":400,"statusMessage":"Region GB is not enabled for your plan."}
+                    """));
+
+        var provider = await CreateProviderAsync();
+        var error = await Should.ThrowAsync<HttpRequestException>(() =>
+            provider.ListTitlesAsync(new CatalogListRequest(
+                "406", "GB", [CatalogEntryType.Movie], CatalogSort.ReleaseDateDesc, 1, 250)));
+
+        error.Message.ShouldContain("Region GB is not enabled for your plan.");
+    }
+
+    [Fact]
     public async Task GetChangedTitlesAsync_requires_paid_plan()
     {
         var provider = await CreateProviderAsync(plan: "free");

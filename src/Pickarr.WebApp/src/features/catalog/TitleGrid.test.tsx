@@ -87,6 +87,29 @@ describe('TitleGrid', () => {
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
   })
 
+  it('spreads rows when a card row is taller than the estimate', () => {
+    class FakeResize {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe() {
+        this.callback(
+          [{ contentRect: { height: 480 } } as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        )
+      }
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeResize)
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 })
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 })
+
+    const items = Array.from({ length: 10 }, (_, index) => card(index + 1, `Card ${index + 1}`))
+    const { container } = renderGrid(items)
+    const list = container.querySelector('.relative') as HTMLElement
+    expect(list.style.height).toBe('976px')
+  })
+
   it('renders a single copy when a later page repeats an id', () => {
     renderGrid([card(1, 'First copy'), card(1, 'Second copy')])
     expect(screen.getAllByRole('link', { name: /First copy/ })).toHaveLength(1)

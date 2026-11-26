@@ -70,8 +70,17 @@ public sealed class WatchmodeCatalogProvider(
             return match.Regions;
         }
 
+        return await GetPlanCountriesAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<string>> GetPlanCountriesAsync(CancellationToken cancellationToken = default)
+    {
         var regions = await GetAsync<List<WatchmodeRegionItem>>("regions/", cancellationToken);
-        return regions.Where(r => r.Supported).Select(r => r.Country).ToList();
+        return regions
+            .Where(region => region.IsPlanEnabled && !string.IsNullOrWhiteSpace(region.Country))
+            .Select(region => region.Country.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
     }
 
     public async Task<CatalogPage> ListTitlesAsync(
@@ -188,16 +197,20 @@ public sealed class WatchmodeCatalogProvider(
                 error?.StatusMessage ?? "Watchmode monthly quota exceeded.");
         }
 
+        var detail = FirstDetail(error?.StatusMessage, error?.Code, response.ReasonPhrase);
         logger.LogWarning(
-            "Watchmode call failed: {StatusCode} {Code} {Path}",
+            "Watchmode call failed: {StatusCode} {Detail} {Path}",
             (int)response.StatusCode,
-            error?.Code,
+            detail,
             relativePath);
 
         response.Dispose();
         throw new HttpRequestException(
-            $"Watchmode request failed ({(int)response.StatusCode}): {error?.Code ?? response.ReasonPhrase}");
+            $"Watchmode request failed ({(int)response.StatusCode}): {detail}");
     }
+
+    private static string FirstDetail(params string?[] parts) =>
+        parts.FirstOrDefault(part => !string.IsNullOrWhiteSpace(part)) ?? "Bad Request";
 
     private async Task RefreshPlanAsync(CancellationToken cancellationToken)
     {

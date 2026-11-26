@@ -7,6 +7,7 @@ export type CatalogCountrySetup = {
   pagesMeasured: boolean
   incrementalPages: number
   fullyImported: boolean
+  watchmodeEnabled?: boolean
 }
 
 export type CatalogProviderSetup = {

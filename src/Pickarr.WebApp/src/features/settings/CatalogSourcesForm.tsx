@@ -21,7 +21,9 @@ function draftFrom(setup: CatalogSetup): DraftProvider[] {
   return setup.providers.map((provider) => ({
     id: provider.id,
     enabled: provider.enabled,
-    countries: provider.countries.filter((country) => country.enabled).map((country) => country.code),
+    countries: provider.countries
+      .filter((country) => country.enabled && country.watchmodeEnabled !== false)
+      .map((country) => country.code),
   }))
 }
 
@@ -166,13 +168,15 @@ export const CatalogSourcesForm = forwardRef<CatalogSourcesFormHandle, Props>(fu
                 <legend className="text-sm text-[var(--muted)]">{t('settings.countries')}</legend>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {provider.countries.map((country) => {
-                    const checked = selected.countries.includes(country.code)
+                    const onPlan = country.watchmodeEnabled !== false
+                    const checked = onPlan && selected.countries.includes(country.code)
                     return (
                       <label key={country.code} className="flex items-start gap-2 text-sm">
                         <input
                           type="checkbox"
                           className="mt-1"
                           checked={checked}
+                          disabled={!onPlan}
                           onChange={() =>
                             updateProvider(provider.id, (item) => ({
                               ...item,
@@ -185,9 +189,11 @@ export const CatalogSourcesForm = forwardRef<CatalogSourcesFormHandle, Props>(fu
                         <span>
                           <span className="block">{regionNames.of(country.code) ?? country.code}</span>
                           <span className="block text-xs text-[var(--muted)]">
-                            {country.pagesMeasured
-                              ? t('settings.pagesMeasured', { pages: country.pages })
-                              : t('settings.pagesEstimated', { pages: country.pages })}
+                            {onPlan
+                              ? country.pagesMeasured
+                                ? t('settings.pagesMeasured', { pages: country.pages })
+                                : t('settings.pagesEstimated', { pages: country.pages })
+                              : t('settings.countryNotOnWatchmodePlan')}
                           </span>
                         </span>
                       </label>

@@ -30,6 +30,16 @@ export function visibleRowSpan(options: {
   return { start, end }
 }
 
+/**
+ * Row pitch from a measured card row. Ignore a tiny or empty box, and never shrink:
+ * a shorter card plus scroll anchoring restarts layout.
+ */
+export function nextRowStride(previous: number, measuredHeight: number, gap = GRID_GAP_PX): number {
+  if (measuredHeight < 40) return previous
+  const next = Math.round(measuredHeight + gap)
+  return next > previous + 8 ? next : previous
+}
+
 /** Keep the first copy when a later page repeats an id already on screen. */
 export function dedupeById<T extends { id: number }>(items: readonly T[]): T[] {
   const seen = new Set<number>()

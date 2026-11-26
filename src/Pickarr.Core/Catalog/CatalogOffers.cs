@@ -38,6 +38,31 @@ public static class CatalogOffers
             string.Equals(provider.Key, providerKey, StringComparison.OrdinalIgnoreCase))?.Countries
         ?? [];
 
+    /// <summary>
+    /// Countries the settings page can offer. With no live Watchmode data, the built-in list is used.
+    /// Otherwise a country must be on that list, on the source, and enabled for the account plan.
+    /// </summary>
+    public static IReadOnlyList<string> AvailableCountries(
+        string providerKey,
+        string? externalId,
+        WatchmodeAvailability? live)
+    {
+        var offered = CountriesFor(providerKey);
+        if (live is null)
+        {
+            return offered.ToList();
+        }
+
+        if (string.IsNullOrWhiteSpace(externalId))
+        {
+            return [];
+        }
+
+        return offered
+            .Where(code => live.Allows(externalId, code))
+            .ToList();
+    }
+
     public static string Language(string countryCode) => countryCode.ToUpperInvariant() switch
     {
         "IT" => "it-IT",

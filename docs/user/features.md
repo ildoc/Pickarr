@@ -2,7 +2,7 @@
 
 ## Catalog
 
-Pickarr syncs **catalog sources**: each source is a streaming **provider + country** pair (for example Netflix IT). Offered provider/country pairs are seeded disabled; you enable them in the first-run **Setup** wizard or later in Settings → Catalogs, within Watchmode plan limits.
+Pickarr syncs **catalog sources**: each source is a streaming **provider + country** pair (for example Netflix IT). Offered provider/country pairs are seeded disabled; you enable them in the first-run **Setup** wizard or later in Settings → Catalogs, within Watchmode plan limits. The country checkboxes are the built-in service list narrowed to the regions Watchmode reports for that service and to the countries enabled on the Watchmode account. A country outside that account returns HTTP 400 from Watchmode, so Pickarr does not schedule it. If it was already turned on, the checkbox stays visible but disabled, and the next save turns that source off.
 
 On `/catalog`:
 

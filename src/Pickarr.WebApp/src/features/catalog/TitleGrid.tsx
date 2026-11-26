@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TitleListItem } from '../../api/types'
 import {
@@ -6,6 +6,7 @@ import {
   GRID_GAP_PX,
   columnCount,
   dedupeById,
+  nextRowStride,
   visibleRowSpan,
 } from './gridWindow'
 import { TitleCard } from './TitleCard'
@@ -60,16 +61,17 @@ export function TitleGrid({
   const updateRef = useRef<() => void>(() => undefined)
   const widthRef = useRef(-1)
 
-  const measureRow = useCallback((node: HTMLDivElement | null) => {
-    if (!node) return
-    const height = node.getBoundingClientRect().height
-    if (height < 40) return
-    const next = Math.round(height + GRID_GAP_PX)
-    // Only grow. Shrinking on a shorter card restarts layout and can loop with scroll anchoring.
-    setRowStride((prev) => (next > prev + 8 ? next : prev))
+  const rowNodes = useRef(new Map<number, HTMLDivElement>())
+  const setRowNode = useCallback((index: number, node: HTMLDivElement | null) => {
+    if (node) rowNodes.current.set(index, node)
+    else rowNodes.current.delete(index)
   }, [])
 
-  useEffect(() => {
+  const adoptRowHeight = useCallback((height: number) => {
+    setRowStride((prev) => nextRowStride(prev, height))
+  }, [])
+
+  useLayoutEffect(() => {
     const update = () => {
       const next = readSpan(countRef.current, strideRef.current, containerRef.current)
       setSpan((prev) =>
@@ -100,11 +102,34 @@ export function TitleGrid({
     }
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     strideRef.current = rowStride
     countRef.current = uniqueItems.length
     updateRef.current()
   }, [uniqueItems.length, rowStride])
+
+  useLayoutEffect(() => {
+    const tallest = () => {
+      let max = 0
+      for (const node of rowNodes.current.values()) {
+        const height = node.getBoundingClientRect().height
+        if (height > max) max = height
+      }
+      return max
+    }
+    adoptRowHeight(tallest())
+    if (typeof ResizeObserver === 'undefined' || rowNodes.current.size === 0) return
+    const observer = new ResizeObserver((entries) => {
+      let max = tallest()
+      for (const entry of entries) {
+        const box = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height
+        if (box > max) max = box
+      }
+      adoptRowHeight(max)
+    })
+    for (const node of rowNodes.current.values()) observer.observe(node)
+    return () => observer.disconnect()
+  }, [adoptRowHeight, span.start, span.end, span.columns, uniqueItems.length])
 
   useEffect(() => {
     const node = sentinel.current
@@ -140,7 +165,7 @@ export function TitleGrid({
         {rows.map((row) => (
           <div
             key={row.index}
-            ref={row.index === span.start ? measureRow : undefined}
+            ref={(node) => setRowNode(row.index, node)}
             className="absolute right-0 left-0 grid gap-4"
             style={{
               top: row.index * rowStride,

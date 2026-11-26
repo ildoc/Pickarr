@@ -78,7 +78,8 @@ public sealed class ScheduleReconcilerTests
             db,
             manager,
             new EmptySettingsStore(),
-            NullLogger<ScheduleReconciler>.Instance);
+            NullLogger<ScheduleReconciler>.Instance,
+            NullWatchmodeAvailability.Instance);
         await reconciler.ReconcileAsync();
 
         using var hangfireConnection = storage.GetConnection();
@@ -93,5 +94,61 @@ public sealed class ScheduleReconcilerTests
         recurring.ShouldNotContain(ScheduleReconciler.FullJobId(itId));
         recurring.ShouldNotContain(LeavingSyncJob.JobId("IT"));
         recurring.ShouldNotContain($"catalog-leaving-{usId}");
+    }
+
+    [Fact]
+    public async Task ReconcileAsync_does_not_schedule_a_country_the_watchmode_plan_excludes()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<PickarrDbContext>().UseSqlite(connection).Options;
+        await using var db = new PickarrDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        var provider = new Provider
+        {
+            Key = "now-tv",
+            DisplayName = "Now TV",
+            ProviderType = "watchmode",
+            ExternalId = "406",
+            IsEnabled = true,
+            CreatedAt = DateTime.UtcNow,
+        };
+        db.Providers.Add(provider);
+        await db.SaveChangesAsync();
+        db.CatalogSources.Add(new CatalogSource
+        {
+            ProviderId = provider.Id,
+            CountryCode = "GB",
+            MetadataLanguage = "en-GB",
+            IsEnabled = true,
+            IncrementalCron = "0 4 * * *",
+            FullSyncCron = "0 3 * * 0",
+        });
+        await db.SaveChangesAsync();
+
+        var storage = new InMemoryStorage();
+        JobStorage.Current = storage;
+        var sourceId = db.CatalogSources.Single().Id;
+        var live = new Pickarr.Core.Catalog.WatchmodeAvailability(
+            new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
+            {
+                ["406"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "GB", "IE", "IT" },
+            },
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "US", "IT" });
+        var reconciler = new ScheduleReconciler(
+            db,
+            new RecurringJobManager(storage),
+            new EmptySettingsStore(),
+            NullLogger<ScheduleReconciler>.Instance,
+            new FixedWatchmodeAvailability(live));
+
+        await reconciler.ReconcileAsync();
+
+        using var hangfireConnection = storage.GetConnection();
+        var recurring = hangfireConnection.GetAllItemsFromSet("recurring-jobs");
+        recurring.ShouldNotContain(ScheduleReconciler.IncrementalJobId(sourceId));
+        recurring.ShouldNotContain(ScheduleReconciler.FullJobId(sourceId));
+        recurring.ShouldNotContain(LeavingSyncJob.JobId("GB"));
     }
 }

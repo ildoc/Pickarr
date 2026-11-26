@@ -2,6 +2,7 @@ using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pickarr.Core.Abstractions;
+using Pickarr.Core.Domain.Entities;
 using Pickarr.Core.Settings;
 using Pickarr.Infrastructure.Persistence;
 using System.Text.Json;
@@ -12,7 +13,8 @@ public sealed class ScheduleReconciler(
     PickarrDbContext db,
     IRecurringJobManager recurringJobs,
     ISettingsStore settings,
-    ILogger<ScheduleReconciler> logger)
+    ILogger<ScheduleReconciler> logger,
+    IWatchmodeAvailability watchmode)
 {
     public const string ResumeJobId = "catalog-resume";
 
@@ -21,19 +23,23 @@ public sealed class ScheduleReconciler(
         var sources = await db.CatalogSources.AsNoTracking()
             .Include(source => source.Provider)
             .ToListAsync(cancellationToken);
+        var availability = await watchmode.GetAsync(cancellationToken);
+        bool Serves(CatalogSource source) =>
+            availability is null || availability.Allows(source.Provider?.ExternalId, source.CountryCode);
         // Always drop legacy per-source leaving ids (pre country-dedupe).
         foreach (var source in sources)
         {
             recurringJobs.RemoveIfExists($"catalog-leaving-{source.Id}");
         }
 
-        foreach (var source in sources.Where(source => !source.IsEnabled || source.Provider?.IsEnabled != true))
+        foreach (var source in sources.Where(source =>
+                     !source.IsEnabled || source.Provider?.IsEnabled != true || !Serves(source)))
         {
             recurringJobs.RemoveIfExists(IncrementalJobId(source.Id));
             recurringJobs.RemoveIfExists(FullJobId(source.Id));
         }
 
-        sources = sources.Where(source => source.IsEnabled && source.Provider?.IsEnabled == true).ToList();
+        sources = sources.Where(source => source.IsEnabled && source.Provider?.IsEnabled == true && Serves(source)).ToList();
 
         var enabledCountries = sources
             .Select(s => s.CountryCode.Trim().ToUpperInvariant())

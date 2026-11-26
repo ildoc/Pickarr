@@ -46,6 +46,24 @@ describe('CatalogSourcesPage', () => {
     expect(screen.getByText('918 already used. 959 of 2500 by the reset, including the one-time fill.')).toBeTruthy()
   })
 
+  it('leaves a country off the selection when Watchmode does not enable it', async () => {
+    vi.mocked(fetchCatalogSetup).mockResolvedValue(
+      catalogSetup({
+        countries: [
+          country('US', true),
+          country('GB', true, false),
+        ],
+      }),
+    )
+    wrap(<CatalogSourcesPage />)
+
+    const blocked = await screen.findByRole('checkbox', { name: /United Kingdom/ })
+    expect(blocked).toBeDisabled()
+    expect(blocked).not.toBeChecked()
+    expect(screen.getByText('Not enabled for this Watchmode account, so Pickarr will not sync it.')).toBeTruthy()
+    expect(screen.getByRole('checkbox', { name: /United States/ })).toBeChecked()
+  })
+
   it('fills the meter completely when a full month passes the quota', async () => {
     vi.mocked(fetchCatalogSetup).mockResolvedValue(
       catalogSetup({
@@ -62,7 +80,30 @@ describe('CatalogSourcesPage', () => {
   })
 })
 
-function catalogSetup(overrides: { pages?: number; used?: number } = {}): CatalogSetup {
+function country(
+  code: string,
+  enabled: boolean,
+  watchmodeEnabled = true,
+  pages = 32,
+): CatalogSetup['providers'][number]['countries'][number] {
+  return {
+    code,
+    enabled,
+    pages,
+    pagesMeasured: true,
+    incrementalPages: 3,
+    fullyImported: true,
+    watchmodeEnabled,
+  }
+}
+
+function catalogSetup(
+  overrides: {
+    pages?: number
+    used?: number
+    countries?: CatalogSetup['providers'][number]['countries']
+  } = {},
+): CatalogSetup {
   const pages = overrides.pages ?? 32
   return {
     quota: 2500,
@@ -81,16 +122,7 @@ function catalogSetup(overrides: { pages?: number; used?: number } = {}): Catalo
         key: 'netflix',
         name: 'Netflix',
         enabled: true,
-        countries: [
-          {
-            code: 'US',
-            enabled: true,
-            pages,
-            pagesMeasured: true,
-            incrementalPages: 3,
-            fullyImported: true,
-          },
-        ],
+        countries: overrides.countries ?? [country('US', true, true, pages)],
       },
     ],
   }

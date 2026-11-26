@@ -36,7 +36,8 @@ public sealed record CatalogCountrySetupDto(
     int Pages,
     bool PagesMeasured,
     int IncrementalPages,
-    bool FullyImported);
+    bool FullyImported,
+    bool WatchmodeEnabled = true);
 
 public sealed record UpdateCatalogSetupRequest(IReadOnlyList<UpdateCatalogProviderRequest> Providers);
 
@@ -48,13 +49,15 @@ public sealed class CatalogConfigurationService(
     ISettingsStore settings,
     ScheduleReconciler reconciler,
     CatalogBootstrap bootstrap,
-    IClock clock)
+    IClock clock,
+    IWatchmodeAvailability watchmode)
 {
     public async Task<CatalogSetupDto> GetAsync(CancellationToken cancellationToken = default)
     {
         var snapshot = await budget.GetSnapshotAsync(cancellationToken);
         var plan = await ReadPlanAsync(cancellationToken);
         var (daysLeft, daysInPeriod) = await ReadWindowAsync(cancellationToken);
+        var availability = await watchmode.GetAsync(cancellationToken);
         var providers = await db.Providers.AsNoTracking()
             .Include(provider => provider.CatalogSources)
             .OrderBy(provider => provider.DisplayName)
@@ -71,7 +74,7 @@ public sealed class CatalogConfigurationService(
             CatalogOffers.FullSyncsPerMonth,
             CatalogOffers.DailyRunsPerMonth,
             CatalogOffers.DefaultPagesPerCountry,
-            providers.Select(MapProvider).ToList());
+            providers.Select(provider => MapProvider(provider, availability)).ToList());
     }
 
     public async Task<CatalogSetupDto> UpdateAsync(
@@ -83,6 +86,7 @@ public sealed class CatalogConfigurationService(
             .ToListAsync(cancellationToken);
         var byId = providers.ToDictionary(provider => provider.Id);
 
+        var availability = await watchmode.GetAsync(cancellationToken);
         var selected = new List<CatalogCountryCost>();
         foreach (var update in request.Providers)
         {
@@ -91,7 +95,7 @@ public sealed class CatalogConfigurationService(
                 throw new CatalogSetupException($"Unknown provider {update.Id}.");
             }
 
-            var offered = CatalogOffers.CountriesFor(provider.Key);
+            var offered = CatalogOffers.AvailableCountries(provider.Key, provider.ExternalId, availability);
             var countries = update.Countries
                 .Select(code => code.Trim().ToUpperInvariant())
                 .Where(code => code.Length > 0)
@@ -100,7 +104,12 @@ public sealed class CatalogConfigurationService(
             var unknown = countries.FirstOrDefault(code => !offered.Contains(code, StringComparer.OrdinalIgnoreCase));
             if (unknown is not null)
             {
-                throw new CatalogSetupException($"{provider.DisplayName} does not offer {unknown}.");
+                var knownServiceCountry = CatalogOffers.CountriesFor(provider.Key)
+                    .Contains(unknown, StringComparer.OrdinalIgnoreCase);
+                throw new CatalogSetupException(
+                    knownServiceCountry && availability is not null
+                        ? $"{provider.DisplayName} {unknown} is not enabled on the Watchmode plan."
+                        : $"{provider.DisplayName} does not offer {unknown}.");
             }
 
             if (update.Enabled && countries.Count == 0)
@@ -136,6 +145,17 @@ public sealed class CatalogConfigurationService(
                         code));
                 }
             }
+
+            if (availability is not null)
+            {
+                foreach (var source in provider.CatalogSources)
+                {
+                    if (!offered.Contains(source.CountryCode, StringComparer.OrdinalIgnoreCase))
+                    {
+                        source.IsEnabled = false;
+                    }
+                }
+            }
         }
 
         var snapshot = await budget.GetSnapshotAsync(cancellationToken);
@@ -166,23 +186,38 @@ public sealed class CatalogConfigurationService(
         return await GetAsync(cancellationToken);
     }
 
-    private static CatalogProviderSetupDto MapProvider(Provider provider)
+    private static CatalogProviderSetupDto MapProvider(Provider provider, WatchmodeAvailability? availability)
     {
         var existing = provider.CatalogSources.ToDictionary(
             source => source.CountryCode,
             StringComparer.OrdinalIgnoreCase);
-        var countries = CatalogOffers.CountriesFor(provider.Key)
+        var available = CatalogOffers.AvailableCountries(provider.Key, provider.ExternalId, availability);
+        var codes = available.ToList();
+        if (availability is not null)
+        {
+            foreach (var source in provider.CatalogSources.Where(source => source.IsEnabled))
+            {
+                if (!codes.Contains(source.CountryCode, StringComparer.OrdinalIgnoreCase))
+                {
+                    codes.Add(source.CountryCode);
+                }
+            }
+        }
+
+        var countries = codes
             .Select(code =>
             {
                 existing.TryGetValue(code, out var source);
                 var measured = source?.LastFullTotalPages is > 0;
+                var onPlan = availability is null || available.Contains(code, StringComparer.OrdinalIgnoreCase);
                 return new CatalogCountrySetupDto(
                     code,
                     source?.IsEnabled == true,
                     measured ? source!.LastFullTotalPages!.Value : CatalogOffers.DefaultPagesPerCountry,
                     measured,
                     Math.Max(1, source?.IncrementalPages ?? 3),
-                    source?.LastFullAt is not null);
+                    source?.LastFullAt is not null,
+                    onPlan);
             })
             .ToList();
         return new CatalogProviderSetupDto(

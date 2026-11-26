@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { columnCount, dedupeById, visibleRowSpan } from './gridWindow'
+import { columnCount, dedupeById, nextRowStride, visibleRowSpan } from './gridWindow'
 
 describe('columnCount', () => {
   it('fits as many 180px cards as the row allows', () => {
@@ -35,6 +35,20 @@ describe('visibleRowSpan', () => {
     expect(span.start).toBeGreaterThan(0)
     expect(span.end).toBeLessThan(40)
     expect(span.end).toBeGreaterThan(span.start)
+  })
+})
+
+describe('nextRowStride', () => {
+  it('grows when the measured row is taller than the estimate', () => {
+    expect(nextRowStride(336, 480)).toBe(496)
+  })
+
+  it('keeps the current pitch when the next row is shorter', () => {
+    expect(nextRowStride(496, 360)).toBe(496)
+  })
+
+  it('ignores a row that has not been laid out', () => {
+    expect(nextRowStride(336, 0)).toBe(336)
   })
 })
 

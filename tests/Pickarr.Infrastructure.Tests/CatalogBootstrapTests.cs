@@ -299,7 +299,8 @@ public sealed class CatalogBootstrapTests
                 db,
                 new RecurringJobManager(storage),
                 settings,
-                NullLogger<ScheduleReconciler>.Instance);
+                NullLogger<ScheduleReconciler>.Instance,
+                NullWatchmodeAvailability.Instance);
             var bootstrap = new CatalogBootstrap(
                 db,
                 settings,

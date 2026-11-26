@@ -485,6 +485,7 @@
     "countries": "Countries",
     "pagesMeasured": "{{pages}} pages measured on the last full import",
     "pagesEstimated": "about {{pages}} pages until a full import measures the catalog",
+    "countryNotOnWatchmodePlan": "Not enabled for this Watchmode account, so Pickarr will not sync it.",
     "estimateHeading": "Watchmode estimate",
     "estimateCountries": "{{count}} of {{limit}} free-plan countries",
     "estimateCountriesPaid": "{{count}} countries",

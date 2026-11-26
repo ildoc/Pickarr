@@ -64,8 +64,13 @@ internal sealed class WatchmodeRegionItem
     [JsonPropertyName("name")]
     public string? Name { get; set; }
 
-    [JsonPropertyName("supported")]
-    public bool Supported { get; set; } = true;
+    /// <summary>
+    /// Watchmode omits this on older payloads. Missing means the region is usable.
+    /// </summary>
+    [JsonPropertyName("plan_enabled")]
+    public bool? PlanEnabled { get; set; }
+
+    public bool IsPlanEnabled => PlanEnabled ?? true;
 }
 
 internal sealed class WatchmodeLeavingResponse

@@ -1300,7 +1300,7 @@ public sealed record CatalogEntry(
 
 Constraints and checks:
 
-- Free plan: maximum 3 distinct countries among enabled sources → warning (FR-PRV-04); the check is on the number of countries, not services.
+- Free plan: maximum 3 distinct countries among enabled sources → warning (FR-PRV-04); the check is on the number of countries, not services. The countries shown for a service are the built-in list intersected with `GET /sources/` regions and `GET /regions/` rows whose `plan_enabled` is true. A region the account does not include makes `list-titles` return HTTP 400, so those sources are not scheduled. If Watchmode cannot be read, the built-in list is used.
 - Before enabling a source, the system estimates credits (`LastFullTotalPages` if known, otherwise 32 pages). A month of updates is the daily incremental pages, four full syncs, and a daily leaving check. On the free plan the save is refused when that full month exceeds the quota, or when credits already used plus the one-time fill plus the monthly cost scaled by the days left in the billing period exceed the quota. Paid plans are not refused on the free-plan cap.
 - Service ids are read from `/sources/`, never hard-coded (the only known value, Netflix = 203, is in the seed).
 

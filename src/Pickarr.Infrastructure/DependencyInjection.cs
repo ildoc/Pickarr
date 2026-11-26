@@ -214,6 +214,7 @@ public static class DependencyInjection
         }
 
         services.AddScoped<IProviderResolver, ProviderResolver>();
+        services.AddSingleton<IWatchmodeAvailability, WatchmodeAvailabilityReader>();
         return services;
     }
 

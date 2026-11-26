@@ -195,6 +195,43 @@ public sealed class CatalogConfigurationServiceTests
         error.Message.ShouldContain("0 of 2500");
     }
 
+    [Fact]
+    public async Task GetAsync_hides_countries_that_are_not_on_the_watchmode_plan()
+    {
+        var live = new WatchmodeAvailability(
+            new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
+            {
+                ["203"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "US", "IT" },
+            },
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "IT" });
+        await using var fx = await Fixture.CreateAsync(watchmode: new FixedWatchmodeAvailability(live));
+
+        var netflix = (await fx.Sut.GetAsync()).Providers.Single(provider => provider.Key == "netflix");
+        netflix.Countries.Select(country => country.Code).ShouldBe(["IT"]);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_rejects_a_country_the_watchmode_plan_does_not_include()
+    {
+        var live = new WatchmodeAvailability(
+            new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
+            {
+                ["203"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "US", "IT", "GB" },
+                ["406"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "GB", "IE", "IT" },
+            },
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "US", "IT" });
+        await using var fx = await Fixture.CreateAsync(watchmode: new FixedWatchmodeAvailability(live));
+        var netflix = fx.Db.Providers.Single(provider => provider.Key == "netflix");
+
+        var error = await Should.ThrowAsync<CatalogSetupException>(() =>
+            fx.Sut.UpdateAsync(new UpdateCatalogSetupRequest(
+            [
+                new UpdateCatalogProviderRequest(netflix.Id, Enabled: true, Countries: ["GB"]),
+            ])));
+
+        error.Message.ShouldContain("not enabled on the Watchmode plan");
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly SqliteConnection _connection;
@@ -207,7 +244,8 @@ public sealed class CatalogConfigurationServiceTests
         public static async Task<Fixture> CreateAsync(
             string plan = "free",
             int quota = 2500,
-            int used = 10)
+            int used = 10,
+            IWatchmodeAvailability? watchmode = null)
         {
             var connection = new SqliteConnection("Data Source=:memory:");
             await connection.OpenAsync();
@@ -258,7 +296,8 @@ public sealed class CatalogConfigurationServiceTests
                 db,
                 new RecurringJobManager(storage),
                 settings,
-                NullLogger<ScheduleReconciler>.Instance);
+                NullLogger<ScheduleReconciler>.Instance,
+                NullWatchmodeAvailability.Instance);
             var bootstrap = new CatalogBootstrap(
                 db,
                 settings,
@@ -273,7 +312,8 @@ public sealed class CatalogConfigurationServiceTests
                 settings,
                 reconciler,
                 bootstrap,
-                new FixedClock(new DateTime(2026, 11, 26, 12, 0, 0, DateTimeKind.Utc)));
+                new FixedClock(new DateTime(2026, 11, 26, 12, 0, 0, DateTimeKind.Utc)),
+                watchmode ?? NullWatchmodeAvailability.Instance);
             return new Fixture(connection) { Db = db, Sut = sut };
         }
 
