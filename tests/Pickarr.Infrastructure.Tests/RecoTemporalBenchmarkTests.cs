@@ -28,7 +28,7 @@ public sealed class RecoTemporalBenchmarkTests : IDisposable
         db.Open();
         using var cmd = db.CreateCommand();
         cmd.CommandText = """
-            CREATE TABLE Titles (Id INTEGER PRIMARY KEY, Category TEXT, OriginalLanguage TEXT, ReleaseYear INTEGER, OriginCountries TEXT, VoteTmdb REAL, VoteTmdbCount INTEGER, Popularity REAL, Name TEXT, OriginalTitle TEXT);
+            CREATE TABLE Titles (Id INTEGER PRIMARY KEY, Category TEXT, OriginalLanguage TEXT, ReleaseYear INTEGER, OriginCountries TEXT, VoteTmdb REAL, VoteTmdbCount INTEGER, Popularity REAL, Name TEXT, OriginalTitle TEXT, VoteImdb REAL, VoteImdbCount INTEGER, VoteBlended REAL);
             CREATE TABLE Profiles (Id INTEGER PRIMARY KEY, Name TEXT);
             CREATE TABLE Ratings (ProfileId INTEGER, TitleId INTEGER, Value TEXT, RatedAt TEXT);
             CREATE TABLE RatingEvents (Id INTEGER PRIMARY KEY, ProfileId INTEGER, TitleId INTEGER, At TEXT, Value TEXT);
@@ -46,7 +46,7 @@ public sealed class RecoTemporalBenchmarkTests : IDisposable
             INSERT INTO Settings VALUES ('SYNTHETIC_SECRET');
             INSERT INTO Profiles VALUES (1,'SYNTHETIC_NAME'),(2,'SYNTHETIC_NAME');
             WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<15)
-            INSERT INTO Titles SELECT i,'Movie',NULL,NULL,NULL,5,100,1,'SYNTHETIC_TITLE','SYNTHETIC_ORIGINAL' FROM n;
+            INSERT INTO Titles SELECT i,'Movie',NULL,NULL,NULL,5,100,1,'SYNTHETIC_TITLE','SYNTHETIC_ORIGINAL',NULL,NULL,5 FROM n;
             INSERT INTO TitleLocalizations VALUES
               (1,'it','Nome italiano',NULL,NULL),
               (1,'en','English Name','Tagline','Overview'),
@@ -247,7 +247,7 @@ public sealed class RecoTemporalBenchmarkTests : IDisposable
             using var cmd = db.CreateCommand();
             cmd.CommandText = """
                 WITH RECURSIVE n(i) AS (SELECT 16 UNION ALL SELECT i+1 FROM n WHERE i<45)
-                INSERT INTO Titles SELECT i,'Movie',NULL,NULL,NULL,5,100,1,'SYNTHETIC_TITLE','SYNTHETIC_ORIGINAL' FROM n;
+                INSERT INTO Titles SELECT i,'Movie',NULL,NULL,NULL,5,100,1,'SYNTHETIC_TITLE','SYNTHETIC_ORIGINAL',NULL,NULL,5 FROM n;
                 INSERT INTO Availabilities SELECT Id,1 FROM Titles WHERE Id >= 16;
                 INSERT INTO RatingEvents SELECT Id+100,1,Id,'2025-01-03','Love' FROM Titles WHERE Id >= 16;
                 """;

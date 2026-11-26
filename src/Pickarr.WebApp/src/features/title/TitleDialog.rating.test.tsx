@@ -86,7 +86,7 @@ describe('TitleDialog ratings', () => {
       genres: [],
       posterUrl: null,
       backdropUrl: null,
-      ratings: { tmdb: null, tmdbVotes: null },
+      ratings: { score: null, imdb: null, imdbVotes: null, tmdb: null, tmdbVotes: null },
       links: { tmdb: 'https://example.com/tmdb', imdb: 'https://example.com/imdb', tvdb: 'https://example.com/tvdb' },
       isFavorite: false,
       isWatched: false,
@@ -120,6 +120,98 @@ describe('TitleDialog ratings', () => {
     expect(screen.queryByText(/Arr instance not configured/i)).toBeNull()
   })
 
+  it('shows the blended score and each source with its vote count', async () => {
+    vi.mocked(fetchTitle).mockResolvedValueOnce({
+      id: 42,
+      name: 'Dialog Movie',
+      originalTitle: 'Dialog Movie',
+      year: 2021,
+      category: 'movie',
+      overview: null,
+      runtimeMinutes: null,
+      seasonCount: null,
+      episodeCount: null,
+      genres: [],
+      posterUrl: null,
+      backdropUrl: null,
+      ratings: { score: 7.44, imdb: 8, imdbVotes: 500, tmdb: 6.2, tmdbVotes: 80 },
+      links: { tmdb: null, imdb: null, tvdb: null },
+      isFavorite: false,
+      rating: null,
+      metadataStatus: 'ready',
+      availability: [],
+      arr: {
+        kind: null,
+        arrId: null,
+        state: 'notInLibrary',
+        canAdd: false,
+        canDelete: false,
+        addBlockedReason: 'notConfigured',
+        monitored: null,
+        progress: null,
+        sizeOnDisk: null,
+        path: null,
+        fileCount: null,
+        syncedAt: null,
+        seasons: null,
+        externalUrl: null,
+      },
+    } as TitleDetail)
+
+    renderDialog()
+
+    expect(await screen.findByText('7.4')).toBeTruthy()
+    expect(screen.getByText('IMDb: 8.0 · 500 votes')).toBeTruthy()
+    expect(screen.getByText('TMDB: 6.2 · 80 votes')).toBeTruthy()
+    expect(screen.queryByText(/few votes/i)).toBeNull()
+  })
+
+  it('hides a missing audience source and the title number', async () => {
+    vi.mocked(fetchTitle).mockResolvedValueOnce({
+      id: 42,
+      name: 'Dialog Movie',
+      originalTitle: 'Dialog Movie',
+      year: 2021,
+      category: 'movie',
+      overview: null,
+      runtimeMinutes: null,
+      seasonCount: null,
+      episodeCount: null,
+      genres: [],
+      posterUrl: null,
+      backdropUrl: null,
+      ratings: { score: null, imdb: null, imdbVotes: null, tmdb: 6.2, tmdbVotes: null },
+      links: { tmdb: null, imdb: null, tvdb: null },
+      isFavorite: false,
+      rating: null,
+      metadataStatus: 'ready',
+      availability: [],
+      arr: {
+        kind: null,
+        arrId: null,
+        state: 'notInLibrary',
+        canAdd: false,
+        canDelete: false,
+        addBlockedReason: 'notConfigured',
+        monitored: null,
+        progress: null,
+        sizeOnDisk: null,
+        path: null,
+        fileCount: null,
+        syncedAt: null,
+        seasons: null,
+        externalUrl: null,
+      },
+    } as TitleDetail)
+
+    renderDialog()
+
+    expect(await screen.findByRole('heading', { name: 'Dialog Movie' })).toBeTruthy()
+    expect(screen.getByText('TMDB: 6.2')).toBeTruthy()
+    expect(screen.queryByText(/^IMDb:/)).toBeNull()
+    expect(screen.queryByText('7.4')).toBeNull()
+  })
+
   it('places the library section below the personal actions', async () => {
     vi.mocked(fetchTitle).mockResolvedValueOnce({
       id: 42,
@@ -134,7 +226,7 @@ describe('TitleDialog ratings', () => {
       genres: [{ id: 1, name: 'Drama' }],
       posterUrl: null,
       backdropUrl: null,
-      ratings: { tmdb: null, tmdbVotes: null },
+      ratings: { score: null, imdb: null, imdbVotes: null, tmdb: null, tmdbVotes: null },
       links: { tmdb: null, imdb: null, tvdb: null },
       isFavorite: false,
       isWatched: false,
@@ -276,7 +368,7 @@ describe('TitleDialog ratings', () => {
       genres: [],
       posterUrl: null,
       backdropUrl: null,
-      ratings: { tmdb: null, tmdbVotes: null },
+      ratings: { score: null, imdb: null, imdbVotes: null, tmdb: null, tmdbVotes: null },
       links: { tmdb: null, imdb: 'https://www.imdb.com/title/tt1234567/', tvdb: null },
       isFavorite: false,
       isWatched: false,

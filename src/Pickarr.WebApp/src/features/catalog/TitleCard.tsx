@@ -74,9 +74,9 @@ export const TitleCard = memo(function TitleCard({
             <ArrStatusBadge state={title.arr.state} progress={title.arr.progress} />
           )}
         </div>
-        {title.ratingTmdb != null && (
+        {title.ratingScore != null && (
           <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1.5 py-0.5 text-[11px] font-medium tabular-nums">
-            {title.ratingTmdb.toFixed(1)}
+            {title.ratingScore.toFixed(1)}
           </span>
         )}
       </div>

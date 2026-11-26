@@ -26,6 +26,7 @@ public sealed class TitleConfiguration : IEntityTypeConfiguration<Title>
         builder.Property(x => x.MetadataStatus).HasMaxLength(16).IsRequired();
         builder.HasIndex(x => x.MetadataStatus);
         builder.HasIndex(x => x.ReleaseYear);
+        builder.HasIndex(x => x.VoteBlended);
         builder.HasIndex(x => x.TvdbId);
         builder.HasIndex(x => new { x.TmdbType, x.TmdbId })
             .IsUnique()

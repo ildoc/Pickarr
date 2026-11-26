@@ -999,6 +999,7 @@ public sealed class RecoQueryService(
             TmdbImageUrls.Build(title.PosterPath, "w342"),
             MapGenres(title, language),
             title.VoteTmdb,
+            TitleQueryService.DisplayScore(title),
             personalProfileId is int favoriteProfileId && title.Favorites.Any(f => f.ProfileId == favoriteProfileId),
             personalProfileId is int watchedProfileId && title.WatchedItems.Any(w => w.ProfileId == watchedProfileId),
             personalProfileId is int ratedProfileId

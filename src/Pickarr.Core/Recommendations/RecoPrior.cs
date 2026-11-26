@@ -1,9 +1,8 @@
 namespace Pickarr.Core.Recommendations;
 
-/// <summary>Level-0 Bayesian + popularity prior (§12.2).</summary>
+/// <summary>Level-0 blended-score + popularity prior (§12.2).</summary>
 public static class RecoPrior
 {
-    public const double VoteDamping = 300;
     public const double BayesWeight = 0.7;
     public const double PopWeight = 0.3;
 
@@ -14,7 +13,7 @@ public static class RecoPrior
             return [];
         }
 
-        var votes = pool.Where(t => t.VoteTmdb is not null).Select(t => t.VoteTmdb!.Value).ToList();
+        var votes = pool.Where(t => t.VoteBlended is not null).Select(t => t.VoteBlended!.Value).ToList();
         var c = votes.Count == 0 ? 0.0 : votes.Average();
 
         var bayesRaw = new double[pool.Count];
@@ -24,17 +23,7 @@ public static class RecoPrior
         for (var i = 0; i < pool.Count; i++)
         {
             var t = pool[i];
-            if (t.VoteTmdb is null)
-            {
-                bayesRaw[i] = c;
-            }
-            else
-            {
-                var v = Math.Max(0, t.VoteTmdbCount ?? 0);
-                var r = t.VoteTmdb.Value;
-                var m = VoteDamping;
-                bayesRaw[i] = (v / (v + m)) * r + (m / (v + m)) * c;
-            }
+            bayesRaw[i] = t.VoteBlended ?? c;
 
             if (t.Popularity is null)
             {
@@ -116,8 +105,7 @@ public static class RecoPrior
 
 public sealed record RecoTitleStats(
     int TitleId,
-    double? VoteTmdb,
-    int? VoteTmdbCount,
+    double? VoteBlended,
     double? Popularity);
 
 public sealed record RecoPriorScore(

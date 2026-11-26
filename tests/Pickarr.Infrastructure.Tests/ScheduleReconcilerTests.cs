@@ -90,6 +90,10 @@ public sealed class ScheduleReconcilerTests
         recurring.ShouldContain(LeavingSyncJob.JobId("US"));
         recurring.ShouldContain(ArrSyncJob.SonarrJobId);
         recurring.ShouldContain(ArrSyncJob.RadarrJobId);
+        recurring.ShouldContain(ImdbRatingsJob.RecurringJobId);
+        var imdb = hangfireConnection.GetAllEntriesFromHash("recurring-job:" + ImdbRatingsJob.RecurringJobId);
+        imdb["Cron"].ShouldBe(ImdbRatingsJob.Cron);
+        imdb["TimeZoneId"].ShouldBe(TimeZoneInfo.Local.Id);
         recurring.ShouldNotContain(ScheduleReconciler.IncrementalJobId(itId));
         recurring.ShouldNotContain(ScheduleReconciler.FullJobId(itId));
         recurring.ShouldNotContain(LeavingSyncJob.JobId("IT"));

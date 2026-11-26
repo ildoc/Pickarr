@@ -73,7 +73,8 @@ public static class BenchmarkCatalogInput
 
         var titles = new List<BenchmarkTitle>();
         using (var command = Command("""
-            SELECT Id, Category, OriginalLanguage, ReleaseYear, OriginCountries, VoteTmdb, VoteTmdbCount, Popularity
+            SELECT Id, Category, OriginalLanguage, ReleaseYear, OriginCountries, VoteBlended, Popularity,
+                VoteImdb, VoteImdbCount, VoteTmdb, VoteTmdbCount
             FROM Titles
             """))
         using (var reader = command.ExecuteReader())
@@ -88,9 +89,12 @@ public static class BenchmarkCatalogInput
                     genres.GetValueOrDefault(id) ?? [], keywords.GetValueOrDefault(id) ?? [],
                     cast.GetValueOrDefault(id) ?? [], directors.GetValueOrDefault(id) ?? [], countries);
                 var stats = new RecoTitleStats(id, reader.IsDBNull(5) ? null : reader.GetDouble(5),
-                    reader.IsDBNull(6) ? null : reader.GetInt32(6), reader.IsDBNull(7) ? null : reader.GetDouble(7));
+                    reader.IsDBNull(6) ? null : reader.GetDouble(6));
+                var usableVotes = RecoLevel3.UsableVoteCount(
+                    reader.IsDBNull(7) ? null : reader.GetDouble(7), reader.IsDBNull(8) ? null : reader.GetInt32(8),
+                    reader.IsDBNull(9) ? null : reader.GetDouble(9), reader.IsDBNull(10) ? null : reader.GetInt32(10));
                 var vector = embeddings.GetValueOrDefault(id);
-                titles.Add(new BenchmarkTitle(features, stats, vector is null ? null : modelId, vector));
+                titles.Add(new BenchmarkTitle(features, stats, vector is null ? null : modelId, vector, usableVotes));
             }
 
         var sources = new List<RecoSourceFact>();

@@ -98,6 +98,12 @@ public static class DependencyInjection
         services.AddScoped<ILogFileService, LogFileService>();
         services.AddMemoryCache();
         services.Configure<GhcrOptions>(configuration.GetSection(GhcrOptions.SectionName));
+        services.AddHttpClient<IImdbRatingsSource, HttpImdbRatingsSource>(client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(2);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Pickarr/0.1");
+        });
+        services.AddScoped<IImdbRatingImporter, ImdbRatingImporter>();
         services.AddHttpClient<IImageTagSource, GhcrImageTagClient>((sp, client) =>
             {
                 var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<GhcrOptions>>().Value;
@@ -118,6 +124,7 @@ public static class DependencyInjection
         services.AddTransient<LeavingSyncJob>();
         services.AddTransient<EnrichmentJob>();
         services.AddTransient<MetadataRefreshJob>();
+        services.AddTransient<ImdbRatingsJob>();
         services.AddTransient<DetailCastJob>();
         services.AddTransient<ArrSyncJob>();
         services.AddTransient<RecoBuildJob>();

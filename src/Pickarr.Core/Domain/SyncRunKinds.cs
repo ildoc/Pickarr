@@ -14,6 +14,7 @@ public static class SyncRunKinds
     public const string RecoModelDownload = "RecoModelDownload";
     public const string RecoEval = "RecoEval";
     public const string DetailCast = "DetailCast";
+    public const string ImdbRatings = "ImdbRatings";
 }
 
 public static class SyncRunStatuses

@@ -36,6 +36,7 @@ function title(id: number, name: string): RecommendationsPage['items'][number] {
     posterUrl: null,
     genres: [],
     ratingTmdb: null,
+    ratingScore: null,
     isFavorite: false,
     rating: null,
     availability: null,

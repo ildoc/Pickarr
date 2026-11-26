@@ -91,10 +91,10 @@ Add to Pickarr a **rating** (like / dislike) on the title and **recommendations*
 | **Profile (taste)** | Vector/tastes of the household profile, built from ratings and signals from any source **of that profile**. |
 | **Pool** | Titles among which the score is computed: `Title` rows that have at least one `Availability` on an enabled source. |
 | **Scope** | Filter applied to already-computed scores. `source`: the selected source. `enabled`: all enabled sources. |
-| **Prior** | Non-personal score from average vote and TMDB popularity already stored on the title. Under `N0` it may be blended with the household prior. |
+| **Prior** | Non-personal score from the stored blended audience score and TMDB popularity. Under `N0` it may be blended with the household prior. |
 | **Household prior** | Per-title mean of other profiles’ Love/Like weights, scored with sparse level 1. Enters only the non-personal slot, with cap 0.5. |
 | **Embedding** | Vector of 384 numbers computed locally from the title text (global). |
-| **Cold start** | Phase with few signals (`N_eff < N0`), in which TMDB prior and household prior still weigh. |
+| **Cold start** | Phase with few signals (`N_eff < N0`), in which the blended-score prior and household prior still weigh. |
 
 ---
 
@@ -233,7 +233,7 @@ MoSCoW priority: **M** for the feature MVP, **S** should, **C** could.
 | BR-REC-11 | **Sonarr/Radarr.** A recommended title is added with the existing flow (`ArrAddService`), if it has the required id (BR-08). |
 | BR-REC-12 | **Rebuild.** After a rating or a *Watched* change, rebuild with a 30-second debounce, without waiting for the nightly job. |
 | BR-REC-13 | **Selected source.** It is the same id remembered by the catalog for the profile (`localStorage` `pickarr.sourceId.{profileId}`, query `source`). *For you* reads and writes it. Changing it here changes the catalog on the next visit, and the reverse. |
-| BR-REC-15 | **Household prior.** With `N_eff < N0`, the score’s non-personal slot may include the mean Love/Like of other profiles (sparse level 1 only). Cap `h = 0.5 · (1 − raw)` with `raw = min(1, N_eff/N0)`. At `N_eff ≥ N0`, `h = 0`. Others’ Dislike, favorites, and watched do not enter. A single profile in the install reproduces the TMDB prior. A rating rebuilds the voting profile and others still under `N0`. |
+| BR-REC-15 | **Household prior.** With `N_eff < N0`, the score’s non-personal slot may include the mean Love/Like of other profiles (sparse level 1 only). Cap `h = 0.5 · (1 − raw)` with `raw = min(1, N_eff/N0)`. At `N_eff ≥ N0`, `h = 0`. Others’ Dislike, favorites, and watched do not enter. A single profile in the install reproduces the level-0 prior. A rating rebuilds the voting profile and others still under `N0`. |
 | BR-REC-16 | **Profile preferences.** The build reads `UseImplicit` and `ExcludeInLibrary` from the profile, not from `reco.useImplicit` / `reco.excludeInLibrary`. The global keys may remain stored. |
 | BR-REC-14 | **Similar and scope.** Similar always applies `enabled` membership, even if *For you* is on scope `source`. |
 
@@ -356,7 +356,7 @@ MoSCoW priority: **M** for the feature MVP, **S** should, **C** could.
 | Name and plot | `TitleLocalization` (`TitleId`, `Language`) | Source language, fallback `en-US` (`LanguageFallback`). Add the `en-US` row if missing, for embeddings. |
 | Genres | `Genre.Id` = TMDB id, `TitleGenre`, `GenreLocalization` | Level 1 terms, already persisted. |
 | Keywords and cast in payload | `TmdbMetadataProvider` (`append_to_response=external_ids,keywords,credits`), `TmdbTitleDetails.Keywords`, `CastJson` (names only) | Keywords today serve stand-up detection and are not saved. Cast has no person id. Extend the mapping; do not open another client. |
-| Average vote and popularity | `Title.VoteTmdb`, `VoteTmdbCount`, `Popularity` | Prior. |
+| Average vote and popularity | `Title.VoteBlended`, `Popularity` | Prior. The blended score is stored on the title. |
 | Favorites | `Favorite` (`TitleId` PK) | Implicit signal and UI model of optimistic toggle (`FavoriteButton`). |
 | Library | `ArrLibraryItem.State`, `ArrAuditLog` (`Add` / `Download` / `Delete`, `Success` / `Failed`) | Persistent signals and current “in library” filter. |
 | UI source | `pickarr.sourceId.{profileId}` (legacy admin: `pickarr.sourceId`), query `source` on `/catalog` | Same source for `/for-you`. |
@@ -561,7 +561,7 @@ update RecoState.EmbeddingCoverage on the pool
 1. profile signals → s_i , N_eff   (BR-REC-02; UseImplicit/ExcludeInLibrary from profile)
 2. sparse profile                      (§12.3)
 3. embedding kNN                       (§12.4) if model ready and coverage ≥ threshold (model status = admin row)
-4. TMDB prior over the whole pool      (§12.2)
+4. blended-score prior over the whole pool      (§12.2)
 5. household prior (if N_eff < N0)     (§12.2bis, BR-REC-15)
 6. fusion → Score, Reasons             (§12.5, §12.7)
 7. transaction: Recommendations(ProfileId, version+1), RecoState of the profile, delete old versions of that profile
@@ -586,13 +586,14 @@ Prior'(t)= (1 − h) · Prior(t) + h · Household(t)
 Score(t) = (1 − w) · Prior'(t) + w · Personal(t)
 Base     = a · Sparse(t) + b · Knn(t)         b = 0 if the model is missing; a + b = 1
 Personal = (1 − c) · Base + c · TmdbAmp(t)    only if t is reached by the graph; otherwise Base
+Final(t) = Score(t) · (1 + q · (Quality(t) − 0.5))   q = 0.3 (reco.quality.weight)
 ```
 
 `N_eff` and `FuseScore` remain those of `RecoLearning`. The household term only modifies the prior slot before fusion. Initial weights `a = 0.4`, `b = 0.6`. Without the model, `a = 1`. Component scores are normalized to [0, 1] on the pool before fusion. `Household` is sparse level 1 on the mean Love/Like of other profiles (BR-REC-15). `TmdbAmp` propagates local positive signals along TMDB `/recommendations` arcs already intersected with the pool (no out-of-catalog titles); at `N_eff ≥ N0`, `c = 0`.
 
 | Level | What | Requires | Active from |
 |---|---|---|---|
-| 0 | Prior | `VoteTmdb`, `VoteTmdbCount`, `Popularity` | always |
+| 0 | Prior | `VoteBlended`, `Popularity` | always |
 | 1 | Sparse profile | signals + genres (keywords and credits when persisted) | `N_eff > 0` |
 | 1b | TMDB amplifier | in-catalog arcs from `/recommendations` | `N_eff > 0` and `c > 0` |
 | 2 | Embedding kNN | model + coverage | `N_eff > 0` and coverage ≥ 80% |
@@ -603,17 +604,18 @@ The taste profile sums signals from **all** sources **of the profile**. A like o
 ### 12.2 Level 0 — Prior
 
 ```
-bayes(t) = (v/(v+m)) · R + (m/(v+m)) · C
-           v = VoteTmdbCount, R = VoteTmdb, C = pool mean, m = 300
+bayes(t) = VoteBlended
+           missing VoteBlended → C, the mean of VoteBlended values in the pool
+           pool with no VoteBlended → 0
 pop(t)   = log(1 + Popularity) normalized to [0, 1] on the pool
 Prior(t) = 0.7 · norm(bayes) + 0.3 · pop
 ```
 
-Title without TMDB vote: `bayes` falls to `C`, `pop` to 0. It stays in the pool. The prior can be computed per type (movie / series / stand-up). MMR (§12.8) completes variety.
+`VoteBlended` already pools both sources and shrinks them toward the catalog mean with `m = 500` (formula in `technical-spec.md`, *Audience score*), so the prior does not shrink it again. Title without a blended score: `bayes` falls to `C`, or to 0 when the pool has none, and `pop` falls to 0 when popularity is missing. It stays in the pool. The prior can be computed per type (movie / series / stand-up). MMR (§12.8) completes variety.
 
 ### 12.2bis Household prior
 
-Under `N0`, the non-personal slot becomes `Prior'` (formulas in §12.1). `Household(t)` is the sparse (level 1) score of the per-title mean of other profiles’ Love/Like weights; who has not rated the title does not enter the mean. Level 1 only: no kNN on the household vector. At `raw = 1` (or without other positive ratings) fusion with TMDB prior alone is recovered. At `raw = 0` without other positive ratings the prior is recovered.
+Under `N0`, the non-personal slot becomes `Prior'` (formulas in §12.1). `Household(t)` is the sparse (level 1) score of the per-title mean of other profiles’ Love/Like weights; who has not rated the title does not enter the mean. Level 1 only: no kNN on the household vector. At `raw = 1` (or without other positive ratings) fusion with the level-0 prior alone is recovered. At `raw = 0` without other positive ratings the prior is recovered.
 
 ### 12.3 Level 1 — Sparse profile
 
@@ -663,13 +665,19 @@ Personal(t) = a · Sparse'(t) + b · Knn'(t)
 Score(t)    = (1 − w) · Prior'(t) + w · Personal(t)     // FuseScore; Prior' includes any household
 ```
 
-- `N_eff = 0` → `w = 0` → only `Prior'` (TMDB and, if any, household).
-- `N_eff ≥ N0` → `h = 0` and the TMDB prior remains a residual `ε = 0.1`: `Score = 0.1·Prior + 0.9·Personal`.
+- `N_eff = 0` → `w = 0` → only `Prior'` (blended score and, if any, household).
+- `N_eff ≥ N0` → `h = 0` and the level-0 prior remains a residual `ε = 0.1`: `Score = 0.1·Prior + 0.9·Personal`.
 - Global parameters in `Settings` (§16); implicit/library toggles on the profile (BR-REC-16).
+
+**Audience quality.** The prior fades as the profile personalizes, so the audience score would otherwise weigh only through `ε`. After fusion (and after level 3 replaces `Personal`, when active), every stage multiplies the score by `1 + q · (Quality(t) − 0.5)`:
+
+- `Quality(t)` is the percentile of `VoteBlended` among pool titles that have one: 0 for the lowest, 1 for the highest, ties share the mean rank. A missing score, or a pool with fewer than two scored titles, gives 0.5.
+- `q = reco.quality.weight` (default 0.3, clamped to [0, 1]). With the default the factor runs from 0.85 to 1.15, so among titles with the same fit the best-rated one scores about 35% more than the worst-rated one. A title at the median, or without a score, is unchanged. `q = 0` disables the term.
+- The stored `Recommendation.Score` is the final value; `Prior` and `Personal` stay unmultiplied. The offline evaluator (§17.3) still compares the unmultiplied levels.
 
 ### 12.6 Level 3 — optional
 
-With at least `reco.ml.minRatings` explicit ratings (default 100, at least 20 per class), regularized logistic in ML.NET learns *Like* versus *not Like*. Features include `[x_t hashed, raw Sparse cosine, mapped Knn score, Prior, sparse/knn fusion weights, personal weight, component availability, year, vote, popularity]`. The feature scores are not pool-min-max normalized; weights and availability flags make the actual fusion inputs explicit. Training features are cross-fitted in five deterministic partitions: each partition's features are computed without any of its target ratings, including the example's own label. The evaluator and recommendation rebuild use the same training path.
+With at least `reco.ml.minRatings` explicit ratings (default 100, at least 20 per class), regularized logistic in ML.NET learns *Like* versus *not Like*. Features include `[x_t hashed, raw Sparse cosine, mapped Knn score, Prior, sparse/knn fusion weights, personal weight, component availability, year, vote, popularity, vote count]`. The vote feature is the stored blended score divided by 10 (missing → 0.5). The vote-count feature is `log10(1+v)/6`, capped at 1, where `v` is the sum of IMDb and TMDB counts that have a rating and a positive count (missing or zero → 0). The feature scores are not pool-min-max normalized; weights and availability flags make the actual fusion inputs explicit. Training features are cross-fitted in five deterministic partitions: each partition's features are computed without any of its target ratings, including the example's own label. The evaluator and recommendation rebuild use the same training path. The model is not persisted, so the next rebuild trains and scores on the current columns. The IMDb import enqueues that rebuild immediately only when there is no previous global mean, or that mean moves by at least 0.05.
 
 The offline gate compares level 3 with the **effective combined score** (prior fused with the available sparse/kNN components), not the standalone level-2/kNN metric. Both scores must use the same positive folds and the same unrated candidates; the comparison needs at least 10 matching folds, at least 20 Love/Like and 20 Dislike ratings, and level 3 must exceed the combined AUC by at least 0.01. Missing data, classes, an unavailable combined metric, or incomplete folds keep level 3 inactive. `Level3SkipReason` distinguishes `below_min_ratings`, `below_min_per_class`, `insufficient_retrieval_data`, `l3_unavailable`, `insufficient_l3_folds`, and the new `did_not_beat_combined` value.
 
@@ -812,6 +820,7 @@ Response: page like `PagedTitles`, plus `version`, `stage`, and on each item the
       "posterUrl": "https://image.tmdb.org/t/p/w342/xyz.jpg",
       "genres": [{ "id": 80, "name": "Crime" }],
       "ratingTmdb": 8.1,
+      "ratingScore": 7.6,
       "rating": null,
       "isFavorite": false,
       "availability": {
@@ -961,6 +970,7 @@ Keys in `AppSetting` / `SettingsKeys`, read like other settings.
 | `reco.n0` | `30` | |
 | `reco.tmdbAmplifier.maxShare` | `0.25` | cap of the TMDB graph in the personal slot at cold start; 0 at `N0` |
 | `reco.priorResidual` | `0.1` | ε |
+| `reco.quality.weight` | `0.3` | audience-quality multiplier on the final score (§12.5); 0 disables |
 | `reco.sparse.weight` | `0.4` | |
 | `reco.knn.weight` | `0.6` | |
 | `reco.knn.k` | `10` | |

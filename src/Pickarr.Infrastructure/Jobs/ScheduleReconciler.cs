@@ -100,6 +100,12 @@ public sealed class ScheduleReconciler(
             j => j.ExecuteAsync(false, CancellationToken.None),
             Cron.Daily());
 
+        recurringJobs.AddOrUpdate<ImdbRatingsJob>(
+            ImdbRatingsJob.RecurringJobId,
+            j => j.ExecuteAsync(false, CancellationToken.None),
+            ImdbRatingsJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Local });
+
         recurringJobs.AddOrUpdate<DetailCastJob>(
             DetailCastJob.RecurringJobId,
             j => j.ExecuteAsync(false, CancellationToken.None),

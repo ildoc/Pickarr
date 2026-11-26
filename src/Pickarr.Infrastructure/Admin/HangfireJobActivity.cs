@@ -178,6 +178,11 @@ internal static class HangfireJobKeyMapper
             return MetadataRefreshJob.RecurringJobId;
         }
 
+        if (name == nameof(ImdbRatingsJob))
+        {
+            return ImdbRatingsJob.RecurringJobId;
+        }
+
         if (name == nameof(DetailCastJob))
         {
             return DetailCastJob.RecurringJobId;

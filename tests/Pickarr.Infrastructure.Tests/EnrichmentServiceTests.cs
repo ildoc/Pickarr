@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Pickarr.Core.Abstractions;
 using Pickarr.Core.Domain;
 using Pickarr.Core.Domain.Entities;
+using Pickarr.Core.Metadata;
 using Pickarr.Core.Settings;
 using Pickarr.Infrastructure;
 using Pickarr.Infrastructure.Catalog;
@@ -144,6 +145,111 @@ public sealed class EnrichmentServiceTests : IAsyncLifetime
         var urls = scope.ServiceProvider.GetRequiredService<ITmdbImageUrlBuilder>();
         var poster = await urls.BuildPosterUrlAsync(title.PosterPath);
         poster.ShouldStartWith("https://image.tmdb.org/t/p/w342/");
+    }
+
+    [Fact]
+    public async Task Enrich_copies_the_local_imdb_rating_without_downloading_the_dataset()
+    {
+        await StubMovieAsync();
+        var titleId = await SeedTitleAsync(tmdbId: 550, tmdbType: "movie", language: "en-US");
+        await using (var scope = _services!.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PickarrDbContext>();
+            db.ImdbTitleRatings.Add(new ImdbTitleRating
+            {
+                Tconst = "tt0137523",
+                AverageRating = 8,
+                NumVotes = 500,
+            });
+            db.ImdbRatingSnapshots.Add(new ImdbRatingSnapshot
+            {
+                Id = ImdbRatingSnapshot.SingletonId,
+                MeanVote = 7,
+                PriorMean = 7,
+                RowCount = 1,
+                ImportedAt = new DateTime(2026, 11, 29, 4, 0, 0, DateTimeKind.Utc),
+                SourceUrl = HttpImdbRatingsSource.DatasetUrl,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await _services!.GetRequiredService<IEnrichmentService>().EnrichTitleAsync(titleId);
+
+        await using var read = _services!.CreateAsyncScope();
+        var saved = await read.ServiceProvider.GetRequiredService<PickarrDbContext>().Titles.SingleAsync();
+        saved.ImdbId.ShouldBe("tt0137523");
+        saved.VoteImdb.ShouldBe(8);
+        saved.VoteImdbCount.ShouldBe(500);
+        saved.VoteTmdb.ShouldBe(8.433);
+        saved.VoteTmdbCount.ShouldBe(26280);
+        saved.VoteBlended.ShouldBe(AudienceScore.Blend(8, 500, saved.VoteTmdb, saved.VoteTmdbCount, new AudiencePrior(7, 0)));
+        _server.LogEntries.ShouldNotContain(entry =>
+            entry.RequestMessage.Url.Contains("datasets.imdbws.com", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Enrich_without_a_local_imdb_row_shrinks_the_calibrated_tmdb_score()
+    {
+        await StubMovieAsync();
+        var titleId = await SeedTitleAsync(tmdbId: 550, tmdbType: "movie", language: "en-US");
+        await using (var scope = _services!.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PickarrDbContext>();
+            var seeded = await db.Titles.SingleAsync(title => title.Id == titleId);
+            seeded.VoteImdb = 9.9;
+            seeded.VoteImdbCount = 12;
+            seeded.VoteBlended = 9.9;
+            db.ImdbRatingSnapshots.Add(new ImdbRatingSnapshot
+            {
+                Id = ImdbRatingSnapshot.SingletonId,
+                MeanVote = 6,
+                PriorMean = 7,
+                TmdbOffset = 0.2,
+                RowCount = 1,
+                ImportedAt = new DateTime(2026, 11, 29, 4, 0, 0, DateTimeKind.Utc),
+                SourceUrl = HttpImdbRatingsSource.DatasetUrl,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await _services!.GetRequiredService<IEnrichmentService>().EnrichTitleAsync(titleId);
+
+        await using var read = _services!.CreateAsyncScope();
+        var saved = await read.ServiceProvider.GetRequiredService<PickarrDbContext>().Titles.SingleAsync();
+        saved.VoteImdb.ShouldBeNull();
+        saved.VoteImdbCount.ShouldBeNull();
+        saved.VoteTmdb.ShouldBe(8.433);
+        saved.VoteTmdbCount.ShouldBe(26280);
+        saved.VoteBlended!.Value.ShouldBe((8.633 * 26280 + 7 * 500) / 26780, 1e-9);
+    }
+
+    [Fact]
+    public async Task Enrich_before_any_import_shrinks_toward_the_catalog_tmdb_mean()
+    {
+        var movie = (await File.ReadAllTextAsync(Path.Combine(_fixtureRoot, "movie-550-en.json")))
+            .Replace("\"tt0137523\"", "null", StringComparison.Ordinal);
+        var config = await File.ReadAllTextAsync(Path.Combine(_fixtureRoot, "configuration.json"));
+        _server.Given(Request.Create().WithPath("/3/movie/550").UsingGet()).RespondWith(Json(movie));
+        _server.Given(Request.Create().WithPath("/3/configuration").UsingGet()).RespondWith(Json(config));
+
+        var titleId = await SeedTitleAsync(tmdbId: 550, tmdbType: "movie", language: "en-US");
+        await _services!.GetRequiredService<IEnrichmentService>().EnrichTitleAsync(titleId);
+
+        await using var read = _services!.CreateAsyncScope();
+        var saved = await read.ServiceProvider.GetRequiredService<PickarrDbContext>().Titles.SingleAsync(title => title.Id == titleId);
+        saved.ImdbId.ShouldBeNull();
+        saved.VoteImdb.ShouldBeNull();
+        saved.VoteTmdb.ShouldNotBeNull();
+        // The only title in the catalog: its TMDB rating is the catalog mean.
+        saved.VoteBlended!.Value.ShouldBe(saved.VoteTmdb!.Value, 1e-9);
+    }
+
+    private async Task StubMovieAsync()
+    {
+        var movie = await File.ReadAllTextAsync(Path.Combine(_fixtureRoot, "movie-550-en.json"));
+        var config = await File.ReadAllTextAsync(Path.Combine(_fixtureRoot, "configuration.json"));
+        _server.Given(Request.Create().WithPath("/3/movie/550").UsingGet()).RespondWith(Json(movie));
+        _server.Given(Request.Create().WithPath("/3/configuration").UsingGet()).RespondWith(Json(config));
     }
 
     [Fact]
@@ -484,6 +590,7 @@ public sealed class EnrichmentServiceTests : IAsyncLifetime
         services.AddDataProtection().UseEphemeralDataProtectionProvider();
         services.AddDbContext<PickarrDbContext>(o => o.UseSqlite(_connection));
         services.AddScoped<ISettingsStore, ProtectedSettingsStore>();
+        services.AddScoped<IImdbRatingImporter, ImdbRatingImporter>();
         services.AddScoped<IEnrichmentService, EnrichmentService>();
         services.AddScoped<ITmdbImageUrlBuilder, TmdbImageUrlBuilder>();
         services.AddPickarrTmdb(config);

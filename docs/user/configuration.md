@@ -91,6 +91,7 @@ This recovery never resets `Pickarr.db`, catalog/profile data, or Data Protectio
 | `reco.useImplicit` | `true` | Global default; each profile has its own toggle. |
 | `reco.excludeInLibrary` | `true` | Global default; each profile has its own toggle. |
 | `reco.n0` | `30` | Effective ratings before full personalization. |
+| `reco.quality.weight` | `0.3` | How much the IMDb/TMDB audience score lifts or lowers *For you* at every stage (`0` disables, max `1`). |
 | `reco.weights.love` | `1.5` | |
 | `reco.weights.like` | `1` | |
 | `reco.weights.dislike` | `-1` | |

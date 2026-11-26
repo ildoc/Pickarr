@@ -147,6 +147,21 @@ public sealed class AdminJobService(
             cancellationToken));
 
         jobs.Add(await BuildJobAsync(
+            ImdbRatingsJob.RecurringJobId,
+            JobText.ImdbRatingsName,
+            JobText.ImdbRatingsDescription,
+            SyncRunKinds.ImdbRatings,
+            sourceId: null,
+            countryCode: null,
+            providerName: null,
+            cron: ImdbRatingsJob.Cron,
+            includeRuns: true,
+            canTrigger: true,
+            recurring,
+            activity,
+            cancellationToken));
+
+        jobs.Add(await BuildJobAsync(
             DetailCastJob.RecurringJobId,
             JobText.DetailCastName,
             JobText.DetailCastDescription,
@@ -328,6 +343,14 @@ public sealed class AdminJobService(
             await EnsureNotRunningAsync(SyncRunKinds.MetadataRefresh, sourceId: null, cancellationToken);
             var hf = backgroundJobs.Enqueue<MetadataRefreshJob>(j => j.ExecuteAsync(true, CancellationToken.None));
             var runId = await WaitForRunAsync(SyncRunKinds.MetadataRefresh, sourceId: null, cancellationToken);
+            return new TriggerJobResult(runId, hf);
+        }
+
+        if (string.Equals(jobKey, ImdbRatingsJob.RecurringJobId, StringComparison.OrdinalIgnoreCase))
+        {
+            await EnsureNotRunningAsync(SyncRunKinds.ImdbRatings, sourceId: null, cancellationToken);
+            var hf = backgroundJobs.Enqueue<ImdbRatingsJob>(j => j.ExecuteAsync(true, CancellationToken.None));
+            var runId = await WaitForRunAsync(SyncRunKinds.ImdbRatings, sourceId: null, cancellationToken);
             return new TriggerJobResult(runId, hf);
         }
 
@@ -676,6 +699,12 @@ public sealed class AdminJobService(
         if (string.Equals(jobKey, MetadataRefreshJob.RecurringJobId, StringComparison.OrdinalIgnoreCase))
         {
             kind = SyncRunKinds.MetadataRefresh;
+            return true;
+        }
+
+        if (string.Equals(jobKey, ImdbRatingsJob.RecurringJobId, StringComparison.OrdinalIgnoreCase))
+        {
+            kind = SyncRunKinds.ImdbRatings;
             return true;
         }
 

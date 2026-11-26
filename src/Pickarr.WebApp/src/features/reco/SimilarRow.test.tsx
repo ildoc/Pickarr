@@ -76,6 +76,7 @@ describe('SimilarRow', () => {
           posterUrl: null,
           genres: [],
           ratingTmdb: null,
+          ratingScore: null,
           isFavorite: false,
           availability: null,
           arr: null,

@@ -84,7 +84,7 @@ public sealed class RecoEvalMetricsTests
             knn: 0.6,
             prior: 0.5,
             releaseYear: 2010,
-            voteTmdb: 7.5,
+            vote: 7.5,
             popularity: 20,
             weightSparse: 0.4,
             weightKnn: 0.6,

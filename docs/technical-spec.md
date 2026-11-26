@@ -220,6 +220,9 @@ Unique index `(ProviderId, CountryCode)`.
 | SeasonCount, EpisodeCount | int null | series |
 | VoteTmdb | real null | |
 | VoteTmdbCount | int null | |
+| VoteImdb | real null | IMDb dataset rating when `ImdbId` matches `tconst` |
+| VoteImdbCount | int null | |
+| VoteBlended | real null | audience ranking score (see *Audience score*) |
 | Popularity | real null | |
 | OriginalLanguage | text null | |
 | PosterPath, BackdropPath | text null | neutral TMDB paths |
@@ -230,7 +233,22 @@ Unique index `(ProviderId, CountryCode)`.
 | MetadataAttempts | int | |
 | CreatedAt, UpdatedAt | datetime | |
 
-Indexes: partial unique `(TmdbType, TmdbId)` (`WHERE TmdbId IS NOT NULL`), `TvdbId`, `ImdbId`, `(MetadataStatus)`, `(ReleaseYear)`.
+Indexes: partial unique `(TmdbType, TmdbId)` (`WHERE TmdbId IS NOT NULL`), `TvdbId`, `ImdbId`, `VoteBlended`, `(MetadataStatus)`, `(ReleaseYear)`.
+
+**Audience score.** `VoteBlended` is computed by `AudienceScore.Blend` from IMDb (`VoteImdb`, `VoteImdbCount`) and TMDB (`VoteTmdb`, `VoteTmdbCount`). Both scales are 0–10. It is the ranking score: `sort=rating`, `minRating`, the recommendation prior, and the level-3 vote feature read it.
+
+- A source is weightable when its rating is present and its vote count is greater than 0.
+- Votes of both sources are pooled into one Bayesian average, shrunk once: `VoteBlended = (v_imdb·R_imdb + α·v_tmdb·R'_tmdb + m·C) / (v_imdb + α·v_tmdb + m)`, where a missing or non-weightable source contributes nothing.
+- `m = 500`, `α = 1` (weight of one TMDB vote against one IMDb vote).
+- `R'_tmdb = clamp(R_tmdb + δ, 0, 10)` moves TMDB onto the IMDb scale.
+- `C` is the plain mean of the IMDb ratings (with votes) of catalog titles found in the dataset. Without such titles it falls back to the vote-weighted dataset mean `Σ(R·v) / Σ(v)`, stored as `ImdbRatingSnapshot.MeanVote`.
+- `δ` is the mean `R_imdb − R_tmdb` over catalog titles with at least 50 votes on both sources; it is 0 with fewer than 20 such titles.
+- `C` and `δ` are fitted at each successful import, before any write, and stored as `ImdbRatingSnapshot.PriorMean` and `TmdbOffset`.
+- No weightable source: `VoteBlended` is null.
+
+The displayed score (`ratingScore` in lists, `ratings.score` in the detail) comes from `AudienceScore.Display`: `VoteBlended` when both sources are weightable, otherwise the raw rating of the only weightable source, otherwise null. A single-source title therefore shows its raw rating but ranks by the shrunk score.
+
+`m`, `α`, the calibration thresholds, and the formula are code constants, not settings. The import recomputes every title with an IMDb id or a score. Enrichment recomputes the title it just fetched from the local `ImdbTitleRatings` table and the stored `C` and `δ`, without downloading the dataset; before the first import it shrinks toward the mean TMDB rating of the catalog. The `AddAudienceScorePrior` migration recomputes `VoteBlended` with the same rule (`δ = 0`, `C` from the snapshot or the catalog TMDB mean).
 
 **Detailed cast** is stored separately from recommendation credits. `CastPeople` contains the shared TMDB person id, name, optional profile path, and optional IMDb person id. `TitleCastMembers` links a title to a person with a unique position. A completed empty fetch is represented by `Titles.CastFetchedAt` being non-null with no associations; before the first fetch, the API may expose the legacy `cast` name array as a fallback.
 
@@ -546,6 +564,7 @@ Configured in Sonarr/Radarr (*Settings → Connect → Webhook*), method `POST`.
 | `CatalogResumeJob` | daily (and after monthly reset) | sync | 1 | — |
 | `EnrichmentJob` | enqueued after syncs + every hour | default | 1 | 3 with backoff |
 | `MetadataRefreshJob` | daily, batches | default | 1 | 3 |
+| `ImdbRatingsJob` | weekly Sunday 04:00 server local time, and manual | default | 1 | — |
 | `DetailCastJob` | hourly, up to 20 batches of 50; manual from admin | default | 1 | per-title failure is recorded and retried on a later run |
 | `LeavingSyncJob(country)` | daily | sync | 1 per country (one Watchmode call, fan-out to sources) | 2 |
 | `ArrSyncJob(kind)` | interval (default 15 min) | arr | 1 per kind | 2 |
@@ -555,6 +574,8 @@ Configured in Sonarr/Radarr (*Settings → Connect → Webhook*), method `POST`.
 | `RecoBuildJob` | rating (debounce 30 s), after embedding, nightly, manual | ml | 1 | 2 |
 | `RecoEvalJob` | manual | ml | 1 | 1 |
 | `RecoModelDownloadJob` | manual (download or detect) | ml | 1 | 1 |
+
+`ImdbRatingsJob` downloads `https://datasets.imdbws.com/title.ratings.tsv.gz`, replaces the local ratings table indexed by `tconst`, and refreshes the stored title scores. A failed download or parse leaves the previous table and title scores in place. When that import is the first one, or the prior mean `C` or the TMDB offset `δ` moves by at least 0.05, the job enqueues `RecoBuildJob`.
 
 `ml` queue: second `AddHangfireServer` with `WorkerCount = 1` and `Queues = ["ml"]`, so long embedding/build work does not saturate `sync`/`arr`.
 
@@ -781,7 +802,7 @@ Prefix `/api/v1`. JSON `camelCase`. Pagination with `page` (from 1) and `pageSiz
 
 Query: `q`, `view` (`all`|`new`|`leaving`|`removed`), `type` (multi: `movie`,`series`,`standup`), `genre` (multi, id), `yearFrom`, `yearTo`, `arrState` (multi: `notInLibrary`,`missing`,`downloading`,`downloaded`,`partial`), `includeRemoved` (bool), `minRating`, `sort` (`relevance`|`added`|`year`|`rating`|`title`), `dir` (`asc`|`desc`), `page`, `pageSize`.
 
-Favorites are not filtered on the catalog: use `GET /favorites` and the UI route `/list`. Any `favorite` flag on the catalog query is ignored.
+Favorites are not filtered on the catalog: use `GET /favorites` and the UI route `/list`. Any `favorite` flag on the catalog query is ignored. `minRating` and `sort=rating` use the stored `VoteBlended` ranking score, not the displayed `ratingScore` (they differ for single-source titles). A title with no blended score does not pass `minRating`.
 
 ```json
 {
@@ -795,7 +816,8 @@ Favorites are not filtered on the catalog: use `GET /favorites` and the UI route
       "category": "series",
       "posterUrl": "https://image.tmdb.org/t/p/w342/abc.jpg",
       "genres": [{ "id": 18, "name": "Drama" }],
-      "ratingTmdb": 7.8,
+      "ratingTmdb": 6.2,
+      "ratingScore": 7.4,
       "isFavorite": true,
       "rating": "like",
       "availability": { "addedAt": "2026-10-28T04:00:10Z", "removedAt": null, "leavingDate": null, "isNew": true },
@@ -828,7 +850,7 @@ Favorites are not filtered on the catalog: use `GET /favorites` and the UI route
   "genres": [{ "id": 18, "name": "Drama" }],
   "posterUrl": "https://image.tmdb.org/t/p/w500/abc.jpg",
   "backdropUrl": "https://image.tmdb.org/t/p/w780/def.jpg",
-  "ratings": { "tmdb": 7.8, "tmdbVotes": 1520 },
+  "ratings": { "score": 7.4, "imdb": 8.0, "imdbVotes": 500, "tmdb": 6.2, "tmdbVotes": 80 },
   "links": { "tmdb": "https://www.themoviedb.org/tv/987654", "imdb": "https://www.imdb.com/title/tt1234567/", "tvdb": null },
   "cast": ["Actor One", "Actor Two"],
   "castMembers": [

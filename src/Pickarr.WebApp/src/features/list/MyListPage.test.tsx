@@ -34,6 +34,7 @@ const listItem = {
   posterUrl: null,
   genres: [],
   ratingTmdb: 7.2,
+  ratingScore: 7.2,
   isFavorite: true,
   availability: null,
   arr: { kind: 'radarr', state: 'notInLibrary' },

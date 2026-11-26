@@ -32,6 +32,7 @@ function card(id: number, name: string): TitleListItem {
     posterUrl: null,
     genres: [],
     ratingTmdb: null,
+    ratingScore: null,
     isFavorite: false,
     availability: null,
     arr: null,
@@ -89,7 +90,10 @@ describe('TitleGrid', () => {
 
   it('spreads rows when a card row is taller than the estimate', () => {
     class FakeResize {
-      constructor(private readonly callback: ResizeObserverCallback) {}
+      private readonly callback: ResizeObserverCallback
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback
+      }
       observe() {
         this.callback(
           [{ contentRect: { height: 480 } } as ResizeObserverEntry],

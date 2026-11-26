@@ -4,8 +4,9 @@ namespace Pickarr.Infrastructure.Metadata.Reco;
 
 public sealed record RecoLevel3TrainingTitle(
     int? ReleaseYear,
-    double? VoteTmdb,
-    double? Popularity);
+    double? VoteBlended,
+    double? Popularity,
+    int UsableVoteCount = 0);
 
 public static class RecoLevel3Training
 {
@@ -81,13 +82,14 @@ public static class RecoLevel3Training
                         knnScores.GetValueOrDefault(titleId, 0.5),
                         priors[titleId],
                         title.ReleaseYear,
-                        title.VoteTmdb,
+                        title.VoteBlended,
                         title.Popularity,
                         weightSparse,
                         weightKnn,
                         personalWeight,
                         hasSparse: !profile.IsEmpty,
-                        hasKnn: hasKnn)));
+                        hasKnn: hasKnn,
+                        usableVotes: title.UsableVoteCount)));
             }
         }
 

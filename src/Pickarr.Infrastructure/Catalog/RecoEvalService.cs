@@ -100,6 +100,9 @@ public sealed class RecoEvalService(
             .Where(t => poolIdSet.Contains(t.Id))
             .Select(t => new TitleRow(
                 t.Id,
+                t.VoteBlended,
+                t.VoteImdb,
+                t.VoteImdbCount,
                 t.VoteTmdb,
                 t.VoteTmdbCount,
                 t.Popularity,
@@ -111,11 +114,15 @@ public sealed class RecoEvalService(
 
         var titleVectors = await BuildTitleVectorsAsync(poolIdSet, titles, cancellationToken);
         var priors = RecoPrior.Compute(
-            titles.Select(t => new RecoTitleStats(t.Id, t.VoteTmdb, t.VoteTmdbCount, t.Popularity)).ToList());
+            titles.Select(t => new RecoTitleStats(t.Id, t.VoteBlended, t.Popularity)).ToList());
         var priorById = priors.ToDictionary(p => p.TitleId);
         var trainingTitles = titles.ToDictionary(
             title => title.Id,
-            title => new RecoLevel3TrainingTitle(title.ReleaseYear, title.VoteTmdb, title.Popularity));
+            title => new RecoLevel3TrainingTitle(
+                title.ReleaseYear,
+                title.VoteBlended,
+                title.Popularity,
+                RecoLevel3.UsableVoteCount(title.VoteImdb, title.VoteImdbCount, title.VoteTmdb, title.VoteTmdbCount)));
         var priorScores = priorById.ToDictionary(entry => entry.Key, entry => entry.Value.Prior);
 
         var minCoverage = await GetDoubleAsync(SettingsKeys.RecoEmbeddingsMinCoverage, 0.8, cancellationToken);
@@ -441,13 +448,14 @@ public sealed class RecoEvalService(
             knn,
             prior,
             title.ReleaseYear,
-            title.VoteTmdb,
+            title.VoteBlended,
             title.Popularity,
             weightSparse,
             weightKnn,
             personalWeight,
             hasSparse,
-            hasKnn);
+            hasKnn,
+            RecoLevel3.UsableVoteCount(title.VoteImdb, title.VoteImdbCount, title.VoteTmdb, title.VoteTmdbCount));
     }
 
     private static List<int> SampleNegatives(IReadOnlyList<int> unrated, int heldOutId, int count, Random rng)
@@ -515,6 +523,9 @@ public sealed class RecoEvalService(
 
     private sealed record TitleRow(
         int Id,
+        double? VoteBlended,
+        double? VoteImdb,
+        int? VoteImdbCount,
         double? VoteTmdb,
         int? VoteTmdbCount,
         double? Popularity,

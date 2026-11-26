@@ -18,6 +18,9 @@ public sealed class Title
     public int? EpisodeCount { get; set; }
     public double? VoteTmdb { get; set; }
     public int? VoteTmdbCount { get; set; }
+    public double? VoteImdb { get; set; }
+    public int? VoteImdbCount { get; set; }
+    public double? VoteBlended { get; set; }
     public double? Popularity { get; set; }
     public string? OriginalLanguage { get; set; }
     public string? PosterPath { get; set; }

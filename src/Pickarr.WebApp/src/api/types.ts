@@ -55,6 +55,7 @@ export type TitleListItem = {
   posterUrl: string | null
   genres: GenreRef[]
   ratingTmdb: number | null
+  ratingScore: number | null
   isFavorite: boolean
   isWatched?: boolean
   rating?: RatingValue | null
@@ -118,7 +119,13 @@ export type TitleDetail = {
   genres: GenreRef[]
   posterUrl: string | null
   backdropUrl: string | null
-  ratings: { tmdb: number | null; tmdbVotes: number | null }
+  ratings: {
+    score: number | null
+    imdb: number | null
+    imdbVotes: number | null
+    tmdb: number | null
+    tmdbVotes: number | null
+  }
   links: { tmdb: string | null; imdb: string | null; tvdb: string | null }
   isFavorite: boolean
   isWatched?: boolean

@@ -46,6 +46,11 @@ internal static class JobText
     public const string RefreshDescription =
         "Updates TMDB metadata that is already stored and has gone stale.";
 
+    public const string ImdbRatingsName = "IMDb ratings";
+
+    public const string ImdbRatingsDescription =
+        "Downloads the public IMDb ratings dataset, matches it to catalog titles, and stores the separate IMDb score and the blended audience score.";
+
     public const string DetailCastName = "Detailed cast";
 
     public const string DetailCastDescription =

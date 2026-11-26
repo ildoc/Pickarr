@@ -156,7 +156,7 @@ public sealed class TitleQueryService(
 
         if (request.MinRating is { } minRating)
         {
-            query = query.Where(t => t.VoteTmdb >= minRating);
+            query = query.Where(t => t.VoteBlended >= minRating);
         }
 
         if (request.ArrStates is { Count: > 0 })
@@ -495,7 +495,12 @@ public sealed class TitleQueryService(
             genres,
             TmdbImageUrls.Build(title.PosterPath, "w500"),
             TmdbImageUrls.Build(title.BackdropPath, "w780"),
-            new TitleRatingsDto(title.VoteTmdb, title.VoteTmdbCount),
+            new TitleRatingsDto(
+                DisplayScore(title),
+                title.VoteImdb,
+                title.VoteImdbCount,
+                title.VoteTmdb,
+                title.VoteTmdbCount),
             new TitleLinksDto(
                 title.TmdbId is { } tmdbId && title.TmdbType is { } tmdbType
                     ? $"https://www.themoviedb.org/{tmdbType}/{tmdbId}"
@@ -648,6 +653,7 @@ public sealed class TitleQueryService(
             TmdbImageUrls.Build(title.PosterPath, "w342"),
             MapGenres(title, language),
             title.VoteTmdb,
+            DisplayScore(title),
             personal.IsFavorite,
             personal.IsWatched,
             personal.Rating,
@@ -655,6 +661,14 @@ public sealed class TitleQueryService(
             BuildArrSummary(title.MediaType, arrItem),
             ratingsOnly ? MapRatingPlaces(title) : MapPlaces(title));
     }
+
+    internal static double? DisplayScore(Title title) =>
+        AudienceScore.Display(
+            title.VoteImdb,
+            title.VoteImdbCount,
+            title.VoteTmdb,
+            title.VoteTmdbCount,
+            title.VoteBlended);
 
     private static IReadOnlyList<CatalogPlaceDto> MapPlaces(Title title) =>
         title.Availabilities
@@ -867,8 +881,8 @@ public sealed class TitleQueryService(
                 ? query.OrderByDescending(t => t.ReleaseYear).ThenBy(t => t.Id)
                 : query.OrderBy(t => t.ReleaseYear).ThenBy(t => t.Id),
             "rating" => desc
-                ? query.OrderByDescending(t => t.VoteTmdb).ThenBy(t => t.Id)
-                : query.OrderBy(t => t.VoteTmdb).ThenBy(t => t.Id),
+                ? query.OrderByDescending(t => t.VoteBlended).ThenBy(t => t.Id)
+                : query.OrderBy(t => t.VoteBlended).ThenBy(t => t.Id),
             "title" => desc
                 ? query.OrderByDescending(t => t.OriginalTitleNormalized).ThenBy(t => t.Id)
                 : query.OrderBy(t => t.OriginalTitleNormalized).ThenBy(t => t.Id),

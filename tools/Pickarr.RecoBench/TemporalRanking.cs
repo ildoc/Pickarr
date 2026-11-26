@@ -7,7 +7,8 @@ public sealed record BenchmarkTitle(
     RecoSparseTitleFeatures Features,
     RecoTitleStats Stats,
     string? EmbeddingModelId,
-    float[]? Embedding);
+    float[]? Embedding,
+    int UsableVoteCount = 0);
 
 public sealed record BenchmarkCatalog(
     IReadOnlyList<BenchmarkTitle> Titles,
@@ -54,7 +55,7 @@ public static class TemporalRanking
             throw new ArgumentException("Invalid title identity.", nameof(catalog));
         foreach (var title in titles.Values)
         {
-            if ((title.Stats.VoteTmdb is double vote && !double.IsFinite(vote))
+            if ((title.Stats.VoteBlended is double vote && !double.IsFinite(vote))
                 || (title.Stats.Popularity is double popularity && !double.IsFinite(popularity)))
                 throw new ArgumentException("Non-finite title statistics.", nameof(catalog));
             if (title.Embedding is null)
@@ -236,8 +237,9 @@ public static class TemporalRanking
     {
         var title = titles[id];
         return RecoLevel3.BuildFeatures(vectors[id], scores.Sparse[id], scores.Knn.GetValueOrDefault(id, 0.5),
-            priors[id], title.Features.ReleaseYear, title.Stats.VoteTmdb, title.Stats.Popularity,
+            priors[id], title.Features.ReleaseYear, title.Stats.VoteBlended, title.Stats.Popularity,
             scores.HasEmbeddingSignals ? 0.4 : 1, scores.HasEmbeddingSignals ? 0.6 : 0,
-            scores.PersonalWeight, scores.HasSparse, scores.HasEmbeddingSignals && embeddings.ContainsKey(id));
+            scores.PersonalWeight, scores.HasSparse, scores.HasEmbeddingSignals && embeddings.ContainsKey(id),
+            title.UsableVoteCount);
     }
 }

@@ -165,7 +165,7 @@ Priority (MoSCoW): **M** = Must (MVP), **S** = Should, **C** = Could, **W** = Wo
 | FR-MET-01 | For each title the system obtains from TMDB: localized and original title, plot, year, duration (film) or number of seasons/episodi (series), genres, posters, backdrop, TMDB rating, IMDB id and TVDB id (series). | M |
 | FR-MET-02 | The metadata language is configurable by source (e.g. `it-IT` for Netflix IT, `en-US` for Netflix US). If the title or plot is missing in the chosen language, * * English ** is used as the fallback. | M |
 | FR-MET-03 | The tab shows external links to **TMDB** and **IMDB** (if the id is known). Link to TVDB for series is optional. | M |
-| FR-MET-04 | ~~Removed.~~ IMDb user rating via OMDb is out of scope; only the TMDB rating is shown. IMDb remains as an external link when `ImdbId` is known. | — |
+| FR-MET-04 | The displayed audience score blends the public IMDb dataset `title.ratings.tsv.gz` with the TMDB rating. OMDb is not a source. IMDb remains an external link when `ImdbId` is known. | M |
 | FR-MET-05 | Metadata is updated periodically (default: every 30 days for active titles) and upon request. | M |
 | FR-MET-06 | Images are served directly from TMDB URLs (hotlinks). No local copy. | M |
 | FR-MET-07 | The interface shows the **attributions** required: Watchmode.com (with link) and TMDB (logo and wording "This product uses the TMDB API but is not endorsed or certified by TMDB"). | M |
@@ -201,7 +201,7 @@ The title detail may also show up to 12 ordered cast members. Cast photos and IM
 
 | ID | Requirement | PRI |
 |---|---|---|
-| FR-DET-01 | Show card: backdrop/poster, title, original title, year, duration (movie) or number of seasons (series), genres, storyline, TMDB rating (and IMDB if available), external links. | M |
+| FR-DET-01 | Show card: backdrop/poster, title, original title, year, duration (movie) or number of seasons (series), genres, storyline, blended audience score (IMDb and TMDB listed when each source has a score), external links. | M |
 | FR-DET-02 | Shows * * availability ** information in the selected source: available from, expiring on, removed on. | M |
 | FR-DET-03 | Shows the library status in a compact section; series library season details and monitoring are expandable. | M |
 | FR-DET-04 | Stocks: favorite, **vote** (*Like* / *Dislike*), add to Sonarr/Radarr, delete from Sonarr/Radarr, update status. | M |
@@ -646,7 +646,7 @@ Dove una decisione è aperta, il documento adotta una proposta predefinita da va
 |---|---|---|
 | D-01 | **Default di profilo qualità e root folder.** Non è verificato che le API di Sonarr/Radarr espongano un "profilo predefinito" esplicito. | L'utente imposta i default nelle impostazioni (scelti dalle liste dell'istanza). Se non impostati, si preseleziona il primo elemento restituito dall'istanza. |
 | D-02 | **Autenticazione.** Più profili senza login; l'app contiene chiavi sensibili e può eliminare file. | Nessun login. Profili come partizione logica (header dichiarato). Da usare in LAN o dietro reverse proxy. Password opzionale come evoluzione (FR-SET-10). |
-| D-03 | **Voto IMDb.** TMDB non fornisce il voto IMDb. | Non integrare OMDb. Solo voto TMDB in UI; link IMDb quando l’id è noto. |
+| D-03 | **IMDb audience rating.** The displayed score blends the public IMDb dataset `title.ratings.tsv.gz` with the TMDB rating. | OMDb is not a source. The IMDb page stays linked when the id is known. |
 | D-04 | **Default delle opzioni di eliminazione.** | Entrambe disattivate, per sicurezza. L'utente può attivarle a ogni eliminazione. |
 | D-05 | **Costo reale per chiamata** Watchmode (e parametri esatti dell'elenco titoli). | Da misurare nello spike SP-1; il design usa un budget parametrico. |
 | D-06 | **Classificazione stand-up.** | Keyword TMDB per **nome** (“stand-up comedy” → `standupcomedy`). Niente id keyword cablati. Preferenza genere Watchmode ancora non implementata. All’avvio, `TitleIdentityMaintenance` ricalcola `Category` dai keyword già persistiti. |

@@ -73,6 +73,7 @@ public sealed class RecoEvalServiceTests : IAsyncLifetime
             var explicitlyNegative = title.Id == ratings[1].TitleId || title.Id == ratings[2].TitleId;
             title.VoteTmdb = explicitlyNegative ? 10 : positive ? 5 : 1;
             title.VoteTmdbCount = 1000;
+            title.VoteBlended = title.VoteTmdb;
             title.Popularity = explicitlyNegative ? 100 : positive ? 50 : 1;
             title.Category = TitleCategories.Movie;
             title.ReleaseYear = 2000;
@@ -215,6 +216,7 @@ public sealed class RecoEvalServiceTests : IAsyncLifetime
             title.ReleaseYear = 1950;
             title.VoteTmdb = 7;
             title.VoteTmdbCount = 1000;
+            title.VoteBlended = 7;
             title.Popularity = 10;
         }
 
@@ -319,6 +321,7 @@ public sealed class RecoEvalServiceTests : IAsyncLifetime
                 ReleaseYear = 2000 + (i % 20),
                 VoteTmdb = 5 + (i % 40) / 10.0,
                 VoteTmdbCount = 100 + i,
+                VoteBlended = 5 + (i % 40) / 10.0,
                 Popularity = 1 + i,
                 MetadataStatus = MetadataStatuses.Ready,
                 CreatedAt = now,

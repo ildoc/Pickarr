@@ -83,6 +83,9 @@ public sealed class RecoBuildService(
             .Select(t => new
             {
                 t.Id,
+                t.VoteBlended,
+                t.VoteImdb,
+                t.VoteImdbCount,
                 t.VoteTmdb,
                 t.VoteTmdbCount,
                 t.Popularity,
@@ -238,10 +241,15 @@ public sealed class RecoBuildService(
         }
 
         var priorStats = titles
-            .Select(t => new RecoTitleStats(t.Id, t.VoteTmdb, t.VoteTmdbCount, t.Popularity))
+            .Select(t => new RecoTitleStats(t.Id, t.VoteBlended, t.Popularity))
             .ToList();
         var priors = RecoPrior.Compute(priorStats);
         var priorById = priors.ToDictionary(p => p.TitleId);
+        var quality = RecoQuality.Compute(priorStats);
+        var qualityWeight = await GetDoubleSettingAsync(
+            SettingsKeys.RecoQualityWeight,
+            RecoQuality.DefaultWeight,
+            cancellationToken);
 
         var minRatings = await GetIntSettingAsync(
             SettingsKeys.RecoMlMinRatings,
@@ -258,7 +266,11 @@ public sealed class RecoBuildService(
             var labels = ratingRows.ToDictionary(row => row.TitleId, row => RatingValues.IsPositive(row.Value));
             var trainingTitles = titles.ToDictionary(
                 title => title.Id,
-                title => new RecoLevel3TrainingTitle(title.ReleaseYear, title.VoteTmdb, title.Popularity));
+                title => new RecoLevel3TrainingTitle(
+                    title.ReleaseYear,
+                    title.VoteBlended,
+                    title.Popularity,
+                    RecoLevel3.UsableVoteCount(title.VoteImdb, title.VoteImdbCount, title.VoteTmdb, title.VoteTmdbCount)));
             var priorScores = priorById.ToDictionary(entry => entry.Key, entry => entry.Value.Prior);
             var examples = RecoLevel3Training.BuildExamples(
                 signalResult.Signals,
@@ -311,17 +323,24 @@ public sealed class RecoBuildService(
                         knnFeatureScores.GetValueOrDefault(title.Id, 0.5),
                         prior,
                         title.ReleaseYear,
-                        title.VoteTmdb,
+                        title.VoteBlended,
                         title.Popularity,
                         weightSparse,
                         weightKnn,
                         personalWeight,
                         hasSparse: !profile.IsEmpty,
-                        hasKnn: useL2 && embMap.ContainsKey(title.Id)));
+                        hasKnn: useL2 && embMap.ContainsKey(title.Id),
+                        usableVotes: RecoLevel3.UsableVoteCount(
+                            title.VoteImdb,
+                            title.VoteImdbCount,
+                            title.VoteTmdb,
+                            title.VoteTmdbCount)));
                 }
 
                 score = RecoLearning.FuseScore(priorSlot, personal.Value, personalWeight);
             }
+
+            score = RecoQuality.Apply(score, quality[title.Id], qualityWeight);
 
             var tmdbContributor = tmdbAmpWeight > 0 && tmdbEdges.Count > 0
                 ? RecoTmdbBoost.TopContributor(title.Id, signalResult.Signals, tmdbEdges)

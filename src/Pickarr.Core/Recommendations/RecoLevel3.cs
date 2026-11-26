@@ -5,7 +5,7 @@ public static class RecoLevel3
 {
     public const int DefaultMinRatings = 100;
     public const int HashBuckets = 32;
-    public const int ScalarFeatureCount = 11;
+    public const int ScalarFeatureCount = 12;
     public const int FeatureCount = HashBuckets + ScalarFeatureCount;
     public const int SparseFeatureIndex = HashBuckets;
     public const int KnnFeatureIndex = HashBuckets + 1;
@@ -18,10 +18,30 @@ public static class RecoLevel3
     public const int YearFeatureIndex = HashBuckets + 8;
     public const int VoteFeatureIndex = HashBuckets + 9;
     public const int PopularityFeatureIndex = HashBuckets + 10;
+    public const int VoteCountFeatureIndex = HashBuckets + 11;
+
+    /// <summary>
+    /// Sum of IMDb and TMDB vote counts that have a rating and a positive count.
+    /// </summary>
+    public static int UsableVoteCount(double? imdbRating, int? imdbVotes, double? tmdbRating, int? tmdbVotes)
+    {
+        var total = 0;
+        if (imdbRating is not null && imdbVotes is > 0)
+        {
+            total += imdbVotes.Value;
+        }
+
+        if (tmdbRating is not null && tmdbVotes is > 0)
+        {
+            total += tmdbVotes.Value;
+        }
+
+        return total;
+    }
 
     /// <summary>
     /// Features: 32 hashed sparse-term buckets + [Sparse, Knn, Prior, component weights,
-    /// personal weight, component availability, yearNorm, voteNorm, popNorm].
+    /// personal weight, component availability, yearNorm, voteNorm, popNorm, voteCount].
     /// </summary>
     public static float[] BuildFeatures(
         SparseVector? titleVector,
@@ -29,13 +49,14 @@ public static class RecoLevel3
         double knn,
         double prior,
         int? releaseYear,
-        double? voteTmdb,
+        double? vote,
         double? popularity,
         double weightSparse = 1,
         double weightKnn = 0,
         double personalWeight = 0.9,
         bool hasSparse = true,
-        bool hasKnn = false)
+        bool hasKnn = false,
+        int usableVotes = 0)
     {
         var features = new float[FeatureCount];
         if (titleVector is not null)
@@ -58,12 +79,15 @@ public static class RecoLevel3
         features[YearFeatureIndex] = releaseYear is { } y
             ? (float)Math.Clamp((y - 1950) / 80.0, 0, 1)
             : 0.5f;
-        features[VoteFeatureIndex] = voteTmdb is { } v
+        features[VoteFeatureIndex] = vote is { } v
             ? (float)Math.Clamp(v / 10.0, 0, 1)
             : 0.5f;
         features[PopularityFeatureIndex] = popularity is { } p
             ? (float)Math.Clamp(Math.Log10(1 + Math.Max(0, p)) / 3.0, 0, 1)
             : 0.5f;
+        features[VoteCountFeatureIndex] = usableVotes <= 0
+            ? 0f
+            : (float)Math.Min(1d, Math.Log10(1 + usableVotes) / 6d);
 
         return features;
     }

@@ -11,6 +11,8 @@ public sealed class PickarrDbContext(DbContextOptions<PickarrDbContext> options)
     public DbSet<ApiUsage> ApiUsages => Set<ApiUsage>();
     public DbSet<SyncRun> SyncRuns => Set<SyncRun>();
     public DbSet<Title> Titles => Set<Title>();
+    public DbSet<ImdbTitleRating> ImdbTitleRatings => Set<ImdbTitleRating>();
+    public DbSet<ImdbRatingSnapshot> ImdbRatingSnapshots => Set<ImdbRatingSnapshot>();
     public DbSet<TitleLocalization> TitleLocalizations => Set<TitleLocalization>();
     public DbSet<Genre> Genres => Set<Genre>();
     public DbSet<GenreLocalization> GenreLocalizations => Set<GenreLocalization>();

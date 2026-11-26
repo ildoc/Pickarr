@@ -12,6 +12,7 @@ namespace Pickarr.Infrastructure.Metadata;
 public sealed class EnrichmentService(
     PickarrDbContext db,
     IMetadataProvider metadata,
+    IImdbRatingImporter imdbRatings,
     IClock clock,
     ILogger<EnrichmentService> logger) : IEnrichmentService
 {
@@ -215,6 +216,7 @@ public sealed class EnrichmentService(
         }
 
         ApplyDetails(title, primary);
+        await imdbRatings.ApplyStoredRatingAsync(title, cancellationToken);
         await UpsertGenresAsync(title, primary, languages[0], cancellationToken);
         await UpsertKeywordsAsync(title, primary, cancellationToken);
         await UpsertCreditsAsync(title, primary, cancellationToken);

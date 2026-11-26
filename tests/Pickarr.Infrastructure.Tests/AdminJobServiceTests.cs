@@ -1,5 +1,7 @@
 using Hangfire;
+using Hangfire.Common;
 using Hangfire.InMemory;
+using Hangfire.States;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -75,6 +77,13 @@ public sealed class AdminJobServiceTests
         keys.ShouldContain(RecoBuildJob.RecurringJobId);
         keys.ShouldContain(RecoEvalJob.JobKey);
         keys.ShouldContain(RecoModelDownloadJob.JobKey);
+        keys.ShouldContain(ImdbRatingsJob.RecurringJobId);
+
+        var imdb = jobs.Single(job => job.JobKey == ImdbRatingsJob.RecurringJobId);
+        imdb.DisplayName.ShouldBe("IMDb ratings");
+        imdb.CanTrigger.ShouldBeTrue();
+        imdb.Kind.ShouldBe(SyncRunKinds.ImdbRatings);
+        imdb.Cron.ShouldBe(ImdbRatingsJob.Cron);
 
         var build = jobs.Single(job => job.JobKey == RecoBuildJob.RecurringJobId);
         build.DisplayName.ShouldBe("Recommendations rebuild");
@@ -93,12 +102,27 @@ public sealed class AdminJobServiceTests
         error.Message.ShouldContain("Invalid jobKey");
     }
 
+    [Fact]
+    public async Task TriggerAsync_enqueues_the_imdb_ratings_job()
+    {
+        await using var fx = await Fixture.CreateAsync();
+        fx.Jobs.Create(Arg.Any<Job>(), Arg.Any<IState>()).Returns("hf-imdb");
+
+        var result = await fx.Sut.TriggerAsync(ImdbRatingsJob.RecurringJobId, new TriggerJobRequest(null, null));
+
+        result.HangfireJobId.ShouldBe("hf-imdb");
+        fx.Jobs.Received(1).Create(
+            Arg.Is<Job>(job => job.Type == typeof(ImdbRatingsJob)),
+            Arg.Any<IState>());
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly SqliteConnection _connection;
 
         public required AdminJobService Sut { get; init; }
         public required PickarrDbContext Db { get; init; }
+        public required IBackgroundJobClient Jobs { get; init; }
 
         private Fixture(SqliteConnection connection) => _connection = connection;
 
@@ -128,7 +152,7 @@ public sealed class AdminJobServiceTests
                 Options.Create(new CatalogBootstrapOptions { AutoInitialImport = false }),
                 NullLogger<CatalogBootstrap>.Instance);
             var sut = new AdminJobService(db, jobs, settings, bootstrap);
-            return new Fixture(connection) { Db = db, Sut = sut };
+            return new Fixture(connection) { Db = db, Sut = sut, Jobs = jobs };
         }
 
         public async ValueTask DisposeAsync()

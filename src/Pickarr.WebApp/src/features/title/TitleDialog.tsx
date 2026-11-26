@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { refreshTitleArr, setTitleSeasonMonitoring } from '../../api/arr'
 import { fetchTitle } from '../../api/catalog'
-import type { CastMember } from '../../api/types'
+import type { CastMember, TitleDetail } from '../../api/types'
 import { categoryLabelKey, formatDate, formatRuntime, formatYear } from '../../lib/format'
 import { AddToArrDialog } from '../arr/AddToArrDialog'
 import { DeleteFromArrDialog } from '../arr/DeleteFromArrDialog'
@@ -18,6 +18,30 @@ import { WatchedButton } from '../watched/WatchedButton'
 import { ArrStatusBadge } from './ArrStatusBadge'
 import { SeasonTable } from './SeasonTable'
 import { SeriesSeasons } from './SeriesSeasons'
+
+function AudienceSources({ ratings }: { ratings: TitleDetail['ratings'] }) {
+  const { t, i18n } = useTranslation()
+  const lines = [
+    { label: t('title.ratingImdb'), score: ratings.imdb, votes: ratings.imdbVotes },
+    { label: t('title.ratingTmdb'), score: ratings.tmdb, votes: ratings.tmdbVotes },
+  ].filter((line): line is { label: string; score: number; votes: number | null } => line.score != null)
+  if (lines.length === 0) return null
+  return (
+    <div className="mt-2 space-y-1 text-sm">
+      {lines.map((line) => (
+        <p key={line.label}>
+          {line.label}: {line.score.toFixed(1)}
+          {line.votes != null && (
+            <>
+              {' · '}
+              {t('title.ratingVotes', { count: line.votes.toLocaleString(i18n.language) })}
+            </>
+          )}
+        </p>
+      ))}
+    </div>
+  )
+}
 
 function getCastMembers(castMembers: CastMember[] | undefined, legacyCast: string[] | undefined) {
   const source = castMembers ?? (legacyCast ?? []).map((name) => ({
@@ -272,7 +296,14 @@ export function TitleDialog({
             <div className="min-w-0 space-y-4">
               <div className="space-y-3">
                 <div className="min-w-0">
-                  <h2 className="text-3xl font-semibold tracking-tight">{detail.data.name}</h2>
+                  <div className="flex items-baseline justify-between gap-4">
+                    <h2 className="text-3xl font-semibold tracking-tight">{detail.data.name}</h2>
+                    {detail.data.ratings.score != null && (
+                      <p className="text-3xl font-semibold tabular-nums">
+                        {detail.data.ratings.score.toFixed(1)}
+                      </p>
+                    )}
+                  </div>
                   <p className="mt-1 text-[var(--muted)]">
                     {formatYear(detail.data.year)} · {t(categoryLabelKey(detail.data.category))}
                     {detail.data.seasonCount
@@ -288,6 +319,7 @@ export function TitleDialog({
                         {t('title.original')}: {detail.data.originalTitle}
                       </p>
                     )}
+                  <AudienceSources ratings={detail.data.ratings} />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <RatingButtons titleId={detail.data.id} rating={detail.data.rating ?? null} variant="dialog">
@@ -432,12 +464,6 @@ export function TitleDialog({
               {detail.data.genres.length > 0 && (
                 <p className="text-sm text-[var(--muted)]">
                   {t('title.genres')}: {detail.data.genres.map((g) => g.name).join(', ')}
-                </p>
-              )}
-
-              {detail.data.ratings.tmdb != null && (
-                <p className="text-sm">
-                  {t('title.ratingTmdb')}: {detail.data.ratings.tmdb.toFixed(1)}
                 </p>
               )}
 

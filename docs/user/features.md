@@ -11,7 +11,7 @@ On `/catalog`:
 - **In library** shows only titles whose cached Sonarr/Radarr status is **Downloaded**, within the selected provider and country. Missing, downloading, and partial titles are excluded.
 - The search field has a **Clear search** button when text is entered; clearing it keeps the other filters.
 - Filters: type, genre, year, library state, sort, include removed.
-- Infinite poster grid with library badges, favorite heart, and rating controls.
+- Infinite poster grid with library badges, favorite heart, and rating controls. The poster badge is the weighted IMDb and TMDB score, to one decimal. With both sources, their votes are pooled (TMDB first adjusted to the IMDb scale) and the result is pulled toward the catalog average in proportion to how few votes there are. With one source, the badge shows that source's score unchanged, but sorting by rating and the minimum-rating filter still use the pulled score, so a title with a handful of votes does not jump to the top. The badge is hidden when no source has votes.
 - With recommendations enabled, the **For you** row under **All** (without search) follows the selected provider, country, type, and genre.
 - The preferred source is remembered per profile (`pickarr.sourceId.{profileId}`).
 
@@ -32,7 +32,7 @@ Type and genre options come from titles in the current scope. Sonarr and Radarr 
 
 Opening a title keeps you on the route that opened it. The detail dialog shows:
 
-- Metadata (overview, genres, scores, external links)
+- Metadata (overview, genres, external links). The title number is the weighted IMDb and TMDB score. IMDb and TMDB are listed under it, with vote counts, when that source has a score.
 - Up to 12 cast members in a horizontally scrollable row, with TMDB photos or accessible placeholders and IMDb links when available
 - Availability on the current source (added / leaving / removed)
 - Compact shared Arr library status (monitor and download progress), with expandable library season details for series
@@ -74,6 +74,7 @@ Votes are highlighted immediately. While a vote is saving, that title's rating c
 - Choosing a concrete provider + country narrows the list to that source immediately (no search box on this page).
 - Type and genre filters work with All selected (options from the enabled-catalog union) or with a concrete source (options from that source).
 - Cold start: while effective ratings are below the personalization threshold (`N0`, default 30), recommendations can blend a **household prior** from other profiles’ Love/Like (capped); at full personalization that term is zero
+- The IMDb/TMDB audience score always counts: among titles that match your taste equally, better-rated ones rank higher, even after full personalization (`reco.quality.weight`, default 0.3)
 - Optional ONNX embedding model under the data path improves similarity when installed
 - Taste data never leaves the container
 - Scrolling loads further titles. **Top**, at the bottom-right, returns to the start of the page (the same control as on the catalog)

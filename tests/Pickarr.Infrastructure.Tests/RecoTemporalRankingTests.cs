@@ -16,7 +16,7 @@ public sealed class RecoTemporalRankingTests
 
     private static BenchmarkTitle Title(int id, int genre, float[]? vector = null, double? popularity = 1) =>
         new(new RecoSparseTitleFeatures(id, "", null, null, [genre], [], [], [], []),
-            new RecoTitleStats(id, 5, 100, popularity), vector is null ? null : "model-v1", vector);
+            new RecoTitleStats(id, 5, popularity), vector is null ? null : "model-v1", vector);
 
     private static BenchmarkCatalog Catalog() => new(
         [Title(1, 1, [1, 0]), Title(2, 2, [0, 1]), Title(3, 1, [1, 0]),
@@ -93,6 +93,28 @@ public sealed class RecoTemporalRankingTests
     }
 
     [Fact]
+    public void Level3_training_and_scoring_receive_the_usable_vote_count()
+    {
+        var titles = Enumerable.Range(1, 104)
+            .Select(id => Title(id, id % 3) with { UsableVoteCount = id * 100 })
+            .ToArray();
+        var catalog = new BenchmarkCatalog(titles, titles.Select(t => new RecoAvailabilityFact(t.Features.TitleId, 1)).ToArray(),
+            [new(1, true, true)], "model-v1", 2);
+        var events = Enumerable.Range(1, 100)
+            .Select(id => E(id, 1, id, id, id % 2 == 1 ? "Love" : "Dislike"))
+            .ToArray();
+        var model = new VoteCountModel();
+
+        var result = TemporalRanking.Score(catalog, events, 1, Day(101), Day(102), model);
+
+        model.Examples.Count.ShouldBe(100);
+        foreach (var example in model.Examples)
+            example.Features[RecoLevel3.VoteCountFeatureIndex]
+                .ShouldBe((float)Math.Min(1, Math.Log10(1 + example.TitleId * 100) / 6), 1e-6f);
+        result.Level3.Titles.Select(x => x.TitleId).ShouldBe(new[] { 104, 103, 102, 101 });
+    }
+
+    [Fact]
     public void Missing_or_incompatible_vectors_are_explicit_and_never_merged()
     {
         var original = Catalog();
@@ -140,7 +162,7 @@ public sealed class RecoTemporalRankingTests
         using (var command = db.CreateCommand())
         {
             command.CommandText = """
-                CREATE TABLE Titles (Id INTEGER, Category TEXT, OriginalLanguage TEXT, ReleaseYear INTEGER, OriginCountries TEXT, VoteTmdb REAL, VoteTmdbCount INTEGER, Popularity REAL);
+                CREATE TABLE Titles (Id INTEGER, Category TEXT, OriginalLanguage TEXT, ReleaseYear INTEGER, OriginCountries TEXT, VoteTmdb REAL, VoteTmdbCount INTEGER, Popularity REAL, VoteImdb REAL, VoteImdbCount INTEGER, VoteBlended REAL);
                 CREATE TABLE TitleGenres (TitleId INTEGER, GenreId INTEGER);
                 CREATE TABLE TitleKeywords (TitleId INTEGER, KeywordId INTEGER);
                 CREATE TABLE TitleCredits (TitleId INTEGER, PersonId INTEGER, Role TEXT);
@@ -148,7 +170,7 @@ public sealed class RecoTemporalRankingTests
                 CREATE TABLE CatalogSources (Id INTEGER, ProviderId INTEGER, IsEnabled INTEGER);
                 CREATE TABLE Providers (Id INTEGER, IsEnabled INTEGER);
                 CREATE TABLE Availabilities (TitleId INTEGER, CatalogSourceId INTEGER, RemovedAt TEXT);
-                INSERT INTO Titles VALUES (1,'Movie',NULL,NULL,'["IT"]',5,100,1), (2,'Movie',NULL,NULL,NULL,5,100,1);
+                INSERT INTO Titles VALUES (1,'Movie',NULL,NULL,'["IT"]',5,100,1,8,500,7.4), (2,'Movie',NULL,NULL,NULL,5,100,1,NULL,NULL,5);
                 INSERT INTO TitleGenres VALUES (1,1),(2,1);
                 INSERT INTO TitleEmbeddings VALUES (1,'model-v1',X'0000803F00000000'),(2,'other',X'0000803F00000000');
                 INSERT INTO CatalogSources VALUES (1,1,1);
@@ -166,6 +188,12 @@ public sealed class RecoTemporalRankingTests
         var catalog = BenchmarkCatalogInput.Read(db, "model-v1", 2);
         catalog.Titles.Single(t => t.Features.TitleId == 1).Features.OriginCountries.ShouldContain("IT");
         catalog.Titles.Single(t => t.Features.TitleId == 2).Embedding.ShouldBeNull();
+        var blended = catalog.Titles.Single(t => t.Features.TitleId == 1);
+        blended.Stats.VoteBlended.ShouldBe(7.4);
+        blended.UsableVoteCount.ShouldBe(600);
+        var tmdbOnly = catalog.Titles.Single(t => t.Features.TitleId == 2);
+        tmdbOnly.Stats.VoteBlended.ShouldBe(5);
+        tmdbOnly.UsableVoteCount.ShouldBe(100);
         var result = TemporalRanking.Score(catalog, [], 1, Day(1), Day(1));
         result.Prior.Titles.Select(x => x.TitleId).ShouldBe(new[] { 1, 2 });
         result.EmbeddingCount.ShouldBe(1);
@@ -193,6 +221,21 @@ public sealed class RecoTemporalRankingTests
             Examples = examples;
             return new Scorer();
         }
+    }
+
+    private sealed class VoteCountModel : IRecoLevel3Model
+    {
+        public IReadOnlyList<RecoLevel3Example> Examples { get; private set; } = [];
+        public IRecoLevel3Scorer? TryTrain(IReadOnlyList<RecoLevel3Example> examples, int minRatings, int minPerClass)
+        {
+            Examples = examples;
+            return new VoteCountScorer();
+        }
+    }
+
+    private sealed class VoteCountScorer : IRecoLevel3Scorer
+    {
+        public double Score(float[] features) => features[RecoLevel3.VoteCountFeatureIndex];
     }
 
     private sealed class Scorer : IRecoLevel3Scorer

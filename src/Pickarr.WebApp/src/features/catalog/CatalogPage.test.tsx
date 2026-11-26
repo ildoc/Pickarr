@@ -224,6 +224,7 @@ describe('CatalogPage', () => {
           posterUrl: null,
           genres: [],
           ratingTmdb: null,
+          ratingScore: null,
           isFavorite: false,
           rating: null,
           availability: null,

@@ -89,6 +89,94 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task MinRating_and_rating_sort_use_the_blended_score()
+    {
+        await using var db = await CreateDbAsync();
+        var source = await SeedCatalogAsync(db);
+        var titles = await SeedTitlesAsync(db, source.Id);
+        titles.Movie.VoteTmdb = 9;
+        titles.Movie.VoteBlended = 6;
+        titles.Series.VoteTmdb = 5;
+        titles.Series.VoteBlended = 8;
+        titles.StandUp.VoteTmdb = 7.5;
+        titles.StandUp.VoteBlended = null;
+        await db.SaveChangesAsync();
+        var sut = new TitleQueryService(db, new MemorySettingsStore(), new FixedClock(DateTime.UtcNow));
+
+        var filtered = await sut.QueryTitlesAsync(source.Id, new TitleQueryRequest(MinRating: 7));
+        filtered.Items.Select(item => item.Id).ShouldBe([titles.Series.Id]);
+
+        var descending = await sut.QueryTitlesAsync(
+            source.Id,
+            new TitleQueryRequest(Sort: "rating", Dir: "desc"));
+        descending.Items.Select(item => item.Id).ShouldBe([titles.Series.Id, titles.Movie.Id, titles.StandUp.Id]);
+
+        var ascending = await sut.QueryTitlesAsync(
+            source.Id,
+            new TitleQueryRequest(Sort: "rating", Dir: "asc"));
+        ascending.Items.Select(item => item.Id).ShouldBe([titles.StandUp.Id, titles.Movie.Id, titles.Series.Id]);
+    }
+
+    [Fact]
+    public async Task List_and_detail_expose_the_blended_score_and_both_sources()
+    {
+        await using var db = await CreateDbAsync();
+        var source = await SeedCatalogAsync(db);
+        var titles = await SeedTitlesAsync(db, source.Id);
+        titles.Movie.VoteTmdb = 6.2;
+        titles.Movie.VoteTmdbCount = 80;
+        titles.Movie.VoteImdb = 8;
+        titles.Movie.VoteImdbCount = 500;
+        titles.Movie.VoteBlended = 7.4;
+        await db.SaveChangesAsync();
+        var sut = new TitleQueryService(db, new MemorySettingsStore(), new FixedClock(DateTime.UtcNow));
+
+        var item = (await sut.QueryTitlesAsync(source.Id, new TitleQueryRequest()))
+            .Items.Single(row => row.Id == titles.Movie.Id);
+        item.RatingTmdb.ShouldBe(6.2);
+        item.RatingScore.ShouldBe(7.4);
+
+        var detail = (await sut.GetTitleAsync(titles.Movie.Id, source.Id))!;
+        detail.Ratings.Score.ShouldBe(7.4);
+        detail.Ratings.Imdb.ShouldBe(8);
+        detail.Ratings.ImdbVotes.ShouldBe(500);
+        detail.Ratings.Tmdb.ShouldBe(6.2);
+        detail.Ratings.TmdbVotes.ShouldBe(80);
+    }
+
+    [Fact]
+    public async Task Single_source_title_shows_its_raw_rating_but_ranks_by_the_blend()
+    {
+        await using var db = await CreateDbAsync();
+        var source = await SeedCatalogAsync(db);
+        var titles = await SeedTitlesAsync(db, source.Id);
+        titles.Movie.VoteTmdb = 9.5;
+        titles.Movie.VoteTmdbCount = 3;
+        titles.Movie.VoteBlended = 7.02;
+        titles.Series.VoteTmdb = 7.6;
+        titles.Series.VoteTmdbCount = 900;
+        titles.Series.VoteImdb = 7.8;
+        titles.Series.VoteImdbCount = 40_000;
+        titles.Series.VoteBlended = 7.79;
+        titles.StandUp.VoteTmdb = 0;
+        titles.StandUp.VoteTmdbCount = 0;
+        titles.StandUp.VoteBlended = null;
+        await db.SaveChangesAsync();
+        var sut = new TitleQueryService(db, new MemorySettingsStore(), new FixedClock(DateTime.UtcNow));
+
+        var page = await sut.QueryTitlesAsync(source.Id, new TitleQueryRequest(Sort: "rating", Dir: "desc"));
+        page.Items.Select(item => item.Id).ShouldBe([titles.Series.Id, titles.Movie.Id, titles.StandUp.Id]);
+        page.Items.Single(item => item.Id == titles.Movie.Id).RatingScore.ShouldBe(9.5);
+        page.Items.Single(item => item.Id == titles.Series.Id).RatingScore.ShouldBe(7.79);
+        page.Items.Single(item => item.Id == titles.StandUp.Id).RatingScore.ShouldBeNull();
+
+        var filtered = await sut.QueryTitlesAsync(source.Id, new TitleQueryRequest(MinRating: 7.5));
+        filtered.Items.Select(item => item.Id).ShouldBe([titles.Series.Id]);
+
+        (await sut.GetTitleAsync(titles.Movie.Id, source.Id))!.Ratings.Score.ShouldBe(9.5);
+    }
+
+    [Fact]
     public async Task Query_without_an_import_explains_the_empty_catalog()
     {
         await using var db = await CreateDbAsync();

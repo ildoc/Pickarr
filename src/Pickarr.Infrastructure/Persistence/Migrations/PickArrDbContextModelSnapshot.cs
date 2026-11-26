@@ -459,6 +459,53 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
                     b.ToTable("GenreLocalizations", (string)null);
                 });
 
+            modelBuilder.Entity("Pickarr.Core.Domain.Entities.ImdbRatingSnapshot", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("ImportedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("MeanVote")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("PriorMean")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("RowCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SourceUrl")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("TmdbOffset")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ImdbRatingSnapshot", (string)null);
+                });
+
+            modelBuilder.Entity("Pickarr.Core.Domain.Entities.ImdbTitleRating", b =>
+                {
+                    b.Property<string>("Tconst")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("AverageRating")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("NumVotes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Tconst");
+
+                    b.ToTable("ImdbTitleRatings", (string)null);
+                });
+
             modelBuilder.Entity("Pickarr.Core.Domain.Entities.Keyword", b =>
                 {
                     b.Property<int>("Id")
@@ -930,6 +977,15 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<double?>("VoteBlended")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("VoteImdb")
+                        .HasColumnType("REAL");
+
+                    b.Property<int?>("VoteImdbCount")
+                        .HasColumnType("INTEGER");
+
                     b.Property<double?>("VoteTmdb")
                         .HasColumnType("REAL");
 
@@ -950,6 +1006,8 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
                     b.HasIndex("ReleaseYear");
 
                     b.HasIndex("TvdbId");
+
+                    b.HasIndex("VoteBlended");
 
                     b.HasIndex("WatchmodeId")
                         .IsUnique();

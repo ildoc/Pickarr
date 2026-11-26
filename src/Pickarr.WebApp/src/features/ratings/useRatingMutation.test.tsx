@@ -22,6 +22,7 @@ function listItem(id: number): TitleListItem {
     posterUrl: null,
     genres: [],
     ratingTmdb: null,
+    ratingScore: null,
     isFavorite: false,
     rating: null,
     availability: null,

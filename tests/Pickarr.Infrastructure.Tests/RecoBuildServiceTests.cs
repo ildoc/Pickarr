@@ -200,6 +200,57 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Build_weights_the_fused_score_by_audience_quality()
+    {
+        var (db, build, _, adminId) = await SeedL1Async();
+        var dramaLink = await db.TitleGenres.SingleAsync(tg => tg.TitleId == 103 && tg.GenreId == 18);
+        db.TitleGenres.Remove(dramaLink);
+        db.TitleGenres.Add(new TitleGenre { TitleId = 103, GenreId = 878 });
+        (await db.Titles.SingleAsync(t => t.Id == 102)).VoteBlended = 6.0;
+        (await db.Titles.SingleAsync(t => t.Id == 103)).VoteBlended = 8.0;
+        db.Ratings.Add(new Rating
+        {
+            ProfileId = adminId,
+            TitleId = 101,
+            Value = RatingValues.Like,
+            RatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        await build.BuildAsync();
+
+        var state = await db.RecoStates.SingleAsync();
+        var personalWeight = RecoLearning.PersonalWeight(state.EffectiveN);
+        var rows = await db.Recommendations.Where(r => r.Version == state.CurrentVersion).ToListAsync();
+        double Fused(Recommendation row) =>
+            row.Personal is { } personal ? RecoLearning.FuseScore(row.Prior, personal, personalWeight) : row.Prior;
+
+        var low = rows.Single(r => r.TitleId == 102);
+        var median = rows.Single(r => r.TitleId == 101);
+        var high = rows.Single(r => r.TitleId == 103);
+        low.Score.ShouldBe(Fused(low) * (1 - RecoQuality.DefaultWeight / 2), 1e-9);
+        median.Score.ShouldBe(Fused(median), 1e-9);
+        high.Score.ShouldBe(Fused(high) * (1 + RecoQuality.DefaultWeight / 2), 1e-9);
+        high.Rank.ShouldBeLessThan(low.Rank);
+    }
+
+    [Fact]
+    public async Task Build_quality_weight_zero_keeps_the_fused_score()
+    {
+        var (db, build, _, _) = await SeedL1Async(new EmptySettingsStore(new Dictionary<string, string>
+        {
+            [SettingsKeys.RecoQualityWeight] = "0",
+        }));
+        (await db.Titles.SingleAsync(t => t.Id == 103)).VoteBlended = 8.0;
+        await db.SaveChangesAsync();
+
+        await build.BuildAsync();
+
+        var rows = await db.Recommendations.ToListAsync();
+        rows.ShouldAllBe(r => Math.Abs(r.Score - r.Prior) < 1e-9);
+    }
+
+    [Fact]
     public async Task Build_tmdb_edge_from_like_lifts_related_title()
     {
         var (db, build, _, adminId) = await SeedL1Async(new EmptySettingsStore(new Dictionary<string, string>
@@ -945,6 +996,7 @@ public sealed class RecoBuildServiceTests : IAsyncLifetime
         OriginalTitle = $"T{id}",
         VoteTmdb = vote,
         VoteTmdbCount = votes,
+        VoteBlended = vote,
         Popularity = pop,
         MetadataStatus = MetadataStatuses.Ready,
         CreatedAt = DateTime.UtcNow,

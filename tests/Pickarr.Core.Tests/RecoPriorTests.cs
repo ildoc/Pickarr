@@ -10,10 +10,10 @@ public sealed class RecoPriorTests
     {
         var pool = new[]
         {
-            new RecoTitleStats(1, VoteTmdb: 5.0, VoteTmdbCount: 1000, Popularity: 10),
-            new RecoTitleStats(2, VoteTmdb: 9.0, VoteTmdbCount: 5000, Popularity: 100),
-            new RecoTitleStats(3, VoteTmdb: 9.0, VoteTmdbCount: 5000, Popularity: 100),
-            new RecoTitleStats(4, VoteTmdb: null, VoteTmdbCount: null, Popularity: null),
+            new RecoTitleStats(1, VoteBlended: 5.0, Popularity: 10),
+            new RecoTitleStats(2, VoteBlended: 9.0, Popularity: 100),
+            new RecoTitleStats(3, VoteBlended: 9.0, Popularity: 100),
+            new RecoTitleStats(4, VoteBlended: null, Popularity: null),
         };
 
         var scored = RecoPrior.Compute(pool);
@@ -32,15 +32,44 @@ public sealed class RecoPriorTests
     {
         var pool = new[]
         {
-            new RecoTitleStats(1, VoteTmdb: 8.0, VoteTmdbCount: 100, Popularity: 50),
-            new RecoTitleStats(2, VoteTmdb: null, VoteTmdbCount: null, Popularity: null),
+            new RecoTitleStats(1, VoteBlended: 8.0, Popularity: 50),
+            new RecoTitleStats(2, VoteBlended: null, Popularity: null),
         };
 
         var scored = RecoPrior.Compute(pool);
         var missing = scored.Single(s => s.TitleId == 2);
 
-        missing.Bayes.ShouldBe(8.0, 1e-9); // C = mean of available votes
+        missing.Bayes.ShouldBe(8.0, 1e-9); // C = mean of available blended scores
         missing.Pop.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Compute_keeps_blended_scores_without_a_second_shrink()
+    {
+        var pool = new[]
+        {
+            new RecoTitleStats(1, VoteBlended: 9, Popularity: 10),
+            new RecoTitleStats(2, VoteBlended: 7, Popularity: 10),
+        };
+
+        var scored = RecoPrior.Compute(pool);
+
+        scored.Single(s => s.TitleId == 1).Bayes.ShouldBe(9);
+        scored.Single(s => s.TitleId == 2).Bayes.ShouldBe(7);
+        RecoPrior.BayesWeight.ShouldBe(0.7);
+        RecoPrior.PopWeight.ShouldBe(0.3);
+    }
+
+    [Fact]
+    public void Compute_without_any_blended_score_uses_zero()
+    {
+        var pool = new[]
+        {
+            new RecoTitleStats(1, VoteBlended: null, Popularity: 10),
+            new RecoTitleStats(2, VoteBlended: null, Popularity: null),
+        };
+
+        RecoPrior.Compute(pool).ShouldAllBe(score => score.Bayes == 0);
     }
 
     [Fact]
@@ -48,9 +77,9 @@ public sealed class RecoPriorTests
     {
         var pool = new[]
         {
-            new RecoTitleStats(5, 7.2, 200, 12.5),
-            new RecoTitleStats(1, 6.1, 50, 3.0),
-            new RecoTitleStats(9, null, null, 1.0),
+            new RecoTitleStats(5, 7.2, 12.5),
+            new RecoTitleStats(1, 6.1, 3.0),
+            new RecoTitleStats(9, null, 1.0),
         };
 
         var a = RecoPrior.Compute(pool).Select(s => (s.TitleId, Math.Round(s.Prior, 10))).ToList();
