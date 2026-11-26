@@ -128,7 +128,7 @@ export const CatalogSourcesForm = forwardRef<CatalogSourcesFormHandle, Props>(fu
     return <p className="text-red-300">{t('settings.catalogLoadFailed')}</p>
   }
 
-  const ratio = Math.min(100, Math.round((estimate.projected / Math.max(1, setup.data.quota)) * 100))
+  const monthRatio = Math.min(100, Math.round((estimate.monthly / Math.max(1, setup.data.quota)) * 100))
 
   function updateProvider(id: number, change: (provider: DraftProvider) => DraftProvider) {
     setNotice(null)
@@ -213,6 +213,25 @@ export const CatalogSourcesForm = forwardRef<CatalogSourcesFormHandle, Props>(fu
         <p className="text-sm">{t('settings.estimateCatalogs', { count: estimate.catalogs })}</p>
         <p className="text-sm">{t('settings.estimateFill', { credits: estimate.fill })}</p>
         <p className="text-sm">{t('settings.estimateMonthly', { credits: estimate.monthly })}</p>
+        <div
+          className="h-2 overflow-hidden rounded-full bg-white/10"
+          role="meter"
+          aria-valuemin={0}
+          aria-valuemax={setup.data.quota}
+          aria-valuenow={Math.min(estimate.monthly, setup.data.quota)}
+          aria-valuetext={t('settings.estimateMonthlyMeter', {
+            credits: estimate.monthly,
+            quota: setup.data.quota,
+          })}
+        >
+          <div
+            className={`h-full ${estimate.overMonth ? 'bg-red-400' : 'bg-emerald-400'}`}
+            style={{ width: `${monthRatio}%` }}
+          />
+        </div>
+        <p className="text-sm">
+          {t('settings.estimateMonthlyMeter', { credits: estimate.monthly, quota: setup.data.quota })}
+        </p>
         <p className="text-sm">
           {t('settings.estimateRemaining', {
             count: setup.data.daysLeft,
@@ -226,12 +245,6 @@ export const CatalogSourcesForm = forwardRef<CatalogSourcesFormHandle, Props>(fu
             quota: setup.data.quota,
           })}
         </p>
-        <div className="h-2 overflow-hidden rounded-full bg-white/10">
-          <div
-            className={`h-full ${estimate.overPeriod ? 'bg-red-400' : 'bg-emerald-400'}`}
-            style={{ width: `${ratio}%` }}
-          />
-        </div>
         <p className="text-xs text-[var(--muted)]">{t('settings.estimateNote')}</p>
         {!showSaveButton && noSelection && (
           <p className="text-sm text-amber-200">{t('setup.catalogsNeedSelection')}</p>

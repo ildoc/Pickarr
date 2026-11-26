@@ -491,6 +491,7 @@
     "estimateCatalogs": "{{count}} catalogs",
     "estimateFill": "Filling new catalogs: {{credits}} credits, once",
     "estimateMonthly": "Keeping them updated: {{credits}} credits each month",
+    "estimateMonthlyMeter": "{{credits}} of {{quota}}",
     "estimateRemaining_one": "Still to come before the quota resets: {{remaining}} credits on the day left",
     "estimateRemaining_other": "Still to come before the quota resets: {{remaining}} credits across the {{count}} days left",
     "estimateUsed": "{{used}} already used. {{total}} of {{quota}} by the reset, including the one-time fill.",
