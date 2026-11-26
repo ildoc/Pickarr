@@ -3,7 +3,7 @@ import { act, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { I18nextProvider } from 'react-i18next'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TitleListItem } from '../../api/types'
 import i18n from '../../i18n'
 import { TitleGrid } from './TitleGrid'
@@ -38,13 +38,21 @@ function card(id: number, name: string): TitleListItem {
   }
 }
 
-function renderGrid(items: TitleListItem[]) {
+function renderGrid(
+  items: TitleListItem[],
+  options: { hasMore?: boolean; onLoadMore?: () => void } = {},
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const ui: ReactNode = (
     <QueryClientProvider client={client}>
       <I18nextProvider i18n={i18n}>
         <MemoryRouter>
-          <TitleGrid items={items} hasMore={false} isFetchingNextPage={false} onLoadMore={() => undefined} />
+          <TitleGrid
+            items={items}
+            hasMore={options.hasMore ?? false}
+            isFetchingNextPage={false}
+            onLoadMore={options.onLoadMore ?? (() => undefined)}
+          />
         </MemoryRouter>
       </I18nextProvider>
     </QueryClientProvider>
@@ -53,6 +61,29 @@ function renderGrid(items: TitleListItem[]) {
 }
 
 describe('TitleGrid', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('requests the next page when the list end is on screen', () => {
+    const onLoadMore = vi.fn()
+    class FakeObserver {
+      constructor(private readonly callback: IntersectionObserverCallback) {}
+      observe() {
+        this.callback(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        )
+      }
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal('IntersectionObserver', FakeObserver)
+    renderGrid([card(1, 'Only title')], { hasMore: true, onLoadMore })
+    expect(onLoadMore).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull()
+  })
+
   it('renders a single copy when a later page repeats an id', () => {
     renderGrid([card(1, 'First copy'), card(1, 'Second copy')])
     expect(screen.getAllByRole('link', { name: /First copy/ })).toHaveLength(1)

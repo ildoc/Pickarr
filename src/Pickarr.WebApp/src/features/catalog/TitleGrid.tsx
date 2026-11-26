@@ -108,16 +108,16 @@ export function TitleGrid({
 
   useEffect(() => {
     const node = sentinel.current
-    if (!node || !hasMore) return
+    if (!node || !hasMore || isFetchingNextPage) return
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) onLoadMoreRef.current()
       },
-      { rootMargin: '400px' },
+      { rootMargin: '600px' },
     )
     observer.observe(node)
     return () => observer.disconnect()
-  }, [hasMore])
+  }, [hasMore, isFetchingNextPage, uniqueItems.length])
 
   const rowCount = Math.ceil(uniqueItems.length / span.columns)
   const lastRow = Math.min(span.end, rowCount)
@@ -161,17 +161,6 @@ export function TitleGrid({
       <div ref={sentinel} className="h-8" />
       {isFetchingNextPage && (
         <p className="py-4 text-center text-sm text-[var(--muted)]">{t('catalog.loading')}</p>
-      )}
-      {hasMore && !isFetchingNextPage && (
-        <div className="flex justify-center py-2">
-          <button
-            type="button"
-            onClick={onLoadMore}
-            className="rounded-md bg-white/5 px-4 py-2 text-sm text-[var(--muted)] hover:bg-white/10"
-          >
-            {t('catalog.loadMore')}
-          </button>
-        </div>
       )}
     </div>
   )

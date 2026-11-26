@@ -187,7 +187,6 @@
     "emptyLeaving": "No leaving dates in the current preview window. On the free Watchmode plan only the next ~10 titles per country are available.",
     "leavingFreeNote": "Free Watchmode plan: leaving dates are a limited preview (about 10 titles per country), not a full calendar.",
     "loading": "Loading catalog…",
-    "loadMore": "Load more",
     "backToTop": "Top",
     "total": "{{count}} titles",
     "stale": "Catalog data may be stale"
