@@ -85,6 +85,8 @@ export const CatalogSourcesForm = forwardRef<CatalogSourcesFormHandle, Props>(fu
       creditsPerCall: setup.data.creditsPerCall,
       fullSyncsPerMonth: setup.data.fullSyncsPerMonth,
       dailyRunsPerMonth: setup.data.dailyRunsPerMonth,
+      daysLeft: setup.data.daysLeft,
+      daysInPeriod: setup.data.daysInPeriod,
     })
   }, [draft, setup.data])
 
@@ -126,8 +128,7 @@ export const CatalogSourcesForm = forwardRef<CatalogSourcesFormHandle, Props>(fu
     return <p className="text-red-300">{t('settings.catalogLoadFailed')}</p>
   }
 
-  const monthTotal = setup.data.used + estimate.monthly
-  const ratio = Math.min(100, Math.round((monthTotal / Math.max(1, setup.data.quota)) * 100))
+  const ratio = Math.min(100, Math.round((estimate.projected / Math.max(1, setup.data.quota)) * 100))
 
   function updateProvider(id: number, change: (provider: DraftProvider) => DraftProvider) {
     setNotice(null)
@@ -213,15 +214,21 @@ export const CatalogSourcesForm = forwardRef<CatalogSourcesFormHandle, Props>(fu
         <p className="text-sm">{t('settings.estimateFill', { credits: estimate.fill })}</p>
         <p className="text-sm">{t('settings.estimateMonthly', { credits: estimate.monthly })}</p>
         <p className="text-sm">
+          {t('settings.estimateRemaining', {
+            count: setup.data.daysLeft,
+            remaining: estimate.remaining,
+          })}
+        </p>
+        <p className="text-sm">
           {t('settings.estimateUsed', {
             used: setup.data.used,
-            total: monthTotal,
+            total: estimate.projected,
             quota: setup.data.quota,
           })}
         </p>
         <div className="h-2 overflow-hidden rounded-full bg-white/10">
           <div
-            className={`h-full ${estimate.overQuota ? 'bg-red-400' : 'bg-emerald-400'}`}
+            className={`h-full ${estimate.overPeriod ? 'bg-red-400' : 'bg-emerald-400'}`}
             style={{ width: `${ratio}%` }}
           />
         </div>
@@ -235,8 +242,15 @@ export const CatalogSourcesForm = forwardRef<CatalogSourcesFormHandle, Props>(fu
             {t('settings.estimateOverCountries', { limit: setup.data.freeCountryLimit })}
           </p>
         )}
-        {estimate.overQuota && (
-          <p className="text-sm text-amber-200">{t('settings.estimateOverQuota', { quota: setup.data.quota })}</p>
+        {estimate.overPeriod && (
+          <p className="text-sm text-amber-200">
+            {t('settings.estimateOverQuota', { total: estimate.projected, quota: setup.data.quota })}
+          </p>
+        )}
+        {estimate.overMonth && (
+          <p className="text-sm text-amber-200">
+            {t('settings.estimateOverMonth', { credits: estimate.monthly, quota: setup.data.quota })}
+          </p>
         )}
         {notice && <p className="text-sm text-[var(--muted)]">{notice}</p>}
         {showSaveButton && (

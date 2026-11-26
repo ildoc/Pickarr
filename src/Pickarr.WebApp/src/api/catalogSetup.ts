@@ -20,6 +20,8 @@ export type CatalogProviderSetup = {
 export type CatalogSetup = {
   quota: number
   used: number
+  daysLeft: number
+  daysInPeriod: number
   plan: string
   freeCountryLimit: number
   creditsPerCall: number

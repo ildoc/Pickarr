@@ -29,6 +29,8 @@ public sealed class CatalogConfigurationServiceTests
         dto.Plan.ShouldBe("free");
         dto.Quota.ShouldBe(2500);
         dto.Used.ShouldBe(10);
+        dto.DaysLeft.ShouldBe(5);
+        dto.DaysInPeriod.ShouldBe(30);
         dto.FreeCountryLimit.ShouldBe(CatalogOffers.FreeCountryLimit);
         dto.Providers.ShouldContain(p => p.Key == "netflix" && p.Enabled);
         dto.Providers.First(p => p.Key == "netflix").Countries
@@ -153,6 +155,46 @@ public sealed class CatalogConfigurationServiceTests
         error.Message.ShouldContain("15 of 20");
     }
 
+    [Fact]
+    public async Task UpdateAsync_allows_a_full_month_that_only_exceeds_the_quota_when_added_to_credits_already_used()
+    {
+        await using var fx = await Fixture.CreateAsync(plan: "free", quota: 2500, used: 2300);
+        var netflix = fx.Db.Providers.Single(p => p.Key == "netflix");
+        var italy = fx.Db.CatalogSources.Single(s => s.ProviderId == netflix.Id && s.CountryCode == "IT");
+        italy.LastFullAt = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+        italy.LastFullTotalPages = 32;
+        italy.IncrementalPages = 3;
+        await fx.Db.SaveChangesAsync();
+
+        var dto = await fx.Sut.UpdateAsync(new UpdateCatalogSetupRequest(
+        [
+            new UpdateCatalogProviderRequest(netflix.Id, Enabled: true, Countries: ["IT"]),
+        ]));
+
+        dto.Providers.First(p => p.Id == netflix.Id).Countries.Count(c => c.Enabled).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_rejects_a_full_month_above_the_quota_late_in_the_period()
+    {
+        await using var fx = await Fixture.CreateAsync(plan: "free", quota: 2500, used: 0);
+        var netflix = fx.Db.Providers.Single(p => p.Key == "netflix");
+        var italy = fx.Db.CatalogSources.Single(s => s.ProviderId == netflix.Id && s.CountryCode == "IT");
+        italy.LastFullAt = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+        italy.LastFullTotalPages = 600;
+        italy.IncrementalPages = 3;
+        await fx.Db.SaveChangesAsync();
+
+        var error = await Should.ThrowAsync<CatalogSetupException>(() =>
+            fx.Sut.UpdateAsync(new UpdateCatalogSetupRequest(
+            [
+                new UpdateCatalogProviderRequest(netflix.Id, Enabled: true, Countries: ["IT"]),
+            ])));
+
+        error.Message.ShouldContain("full month");
+        error.Message.ShouldContain("0 of 2500");
+    }
+
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly SqliteConnection _connection;
@@ -225,7 +267,13 @@ public sealed class CatalogConfigurationServiceTests
                 Options.Create(new CatalogBootstrapOptions { AutoInitialImport = false }),
                 NullLogger<CatalogBootstrap>.Instance);
 
-            var sut = new CatalogConfigurationService(db, budget, settings, reconciler, bootstrap);
+            var sut = new CatalogConfigurationService(
+                db,
+                budget,
+                settings,
+                reconciler,
+                bootstrap,
+                new FixedClock(new DateTime(2026, 11, 26, 12, 0, 0, DateTimeKind.Utc)));
             return new Fixture(connection) { Db = db, Sut = sut };
         }
 
@@ -234,6 +282,11 @@ public sealed class CatalogConfigurationServiceTests
             await Db.DisposeAsync();
             await _connection.DisposeAsync();
         }
+    }
+
+    private sealed class FixedClock(DateTime utcNow) : IClock
+    {
+        public DateTime UtcNow { get; } = utcNow;
     }
 
     private sealed class MemorySettings : ISettingsStore

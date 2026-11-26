@@ -15,6 +15,8 @@ export type EstimateInput = {
   creditsPerCall: number
   fullSyncsPerMonth: number
   dailyRunsPerMonth: number
+  daysLeft: number
+  daysInPeriod: number
 }
 
 export type CatalogEstimate = {
@@ -22,8 +24,19 @@ export type CatalogEstimate = {
   catalogs: number
   fill: number
   monthly: number
+  remaining: number
+  projected: number
+  overPeriod: boolean
+  overMonth: boolean
   overQuota: boolean
   overCountryLimit: boolean
+}
+
+/** Share of a full-period figure still left. Rounds half away from zero, matching the API. */
+export function scaleToRemainingDays(amount: number, daysLeft: number, daysInPeriod: number): number {
+  if (amount <= 0 || daysLeft <= 0 || daysInPeriod <= 0) return 0
+  if (daysLeft >= daysInPeriod) return amount
+  return Math.round(amount * (daysLeft / daysInPeriod))
 }
 
 export function estimateCatalog(input: EstimateInput): CatalogEstimate {
@@ -41,14 +54,21 @@ export function estimateCatalog(input: EstimateInput): CatalogEstimate {
         input.creditsPerCall,
     0,
   )
+  const remaining = scaleToRemainingDays(monthly, input.daysLeft, input.daysInPeriod)
+  const projected = input.used + remaining + fill
+  const overPeriod = input.freePlan && projected > input.quota
+  const overMonth = input.freePlan && monthly > input.quota
 
   return {
     countries,
     catalogs: selected.length,
     fill,
     monthly,
-    overQuota:
-      input.freePlan && (input.used + monthly > input.quota || input.used + fill > input.quota),
+    remaining,
+    projected,
+    overPeriod,
+    overMonth,
+    overQuota: overPeriod || overMonth,
     overCountryLimit: input.freePlan && countries > input.freeCountryLimit,
   }
 }

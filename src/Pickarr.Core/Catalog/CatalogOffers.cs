@@ -71,16 +71,38 @@ public sealed record CatalogCreditEstimateResult(
     int Catalogs,
     int FillCredits,
     int MonthlyCredits,
+    int RemainingCredits,
     bool OverQuota,
     bool OverCountryLimit);
 
 public static class CatalogCreditEstimate
 {
+    /// <summary>
+    /// Share of a full-period credit figure that still falls in the days left.
+    /// Rounds half away from zero. The settings page uses the same rule.
+    /// </summary>
+    public static int ScaleToRemainingDays(int amount, int daysLeft, int daysInPeriod)
+    {
+        if (amount <= 0 || daysLeft <= 0 || daysInPeriod <= 0)
+        {
+            return 0;
+        }
+
+        if (daysLeft >= daysInPeriod)
+        {
+            return amount;
+        }
+
+        return (int)Math.Round(amount * (double)daysLeft / daysInPeriod, MidpointRounding.AwayFromZero);
+    }
+
     public static CatalogCreditEstimateResult Calculate(
         IReadOnlyList<CatalogCountryCost> countries,
         int used,
         int quota,
-        bool freePlan)
+        bool freePlan,
+        int daysLeft = CatalogOffers.DailyRunsPerMonth,
+        int daysInPeriod = CatalogOffers.DailyRunsPerMonth)
     {
         var selected = countries.Where(country => country.Selected).ToList();
         var distinctCountries = selected
@@ -94,13 +116,16 @@ public static class CatalogCreditEstimate
             (country.IncrementalPages * CatalogOffers.DailyRunsPerMonth
              + country.Pages * CatalogOffers.FullSyncsPerMonth
              + CatalogOffers.DailyRunsPerMonth) * CatalogOffers.CreditsPerCall);
+        var remaining = ScaleToRemainingDays(monthly, daysLeft, daysInPeriod);
+        var projected = used + remaining + fill;
 
         return new CatalogCreditEstimateResult(
             distinctCountries,
             selected.Count,
             fill,
             monthly,
-            freePlan && (used + monthly > quota || used + fill > quota),
+            remaining,
+            freePlan && (projected > quota || monthly > quota),
             freePlan && distinctCountries > CatalogOffers.FreeCountryLimit);
     }
 }

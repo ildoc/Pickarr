@@ -95,6 +95,71 @@ public sealed class CatalogCreditEstimateTests
 
         result.FillCredits.ShouldBe(0);
         result.MonthlyCredits.ShouldBe(3 * 30 + 32 * 4 + 30);
+        result.RemainingCredits.ShouldBe(result.MonthlyCredits);
+    }
+
+    [Fact]
+    public void Late_in_the_period_counts_only_the_days_still_left()
+    {
+        var result = CatalogCreditEstimate.Calculate(
+            [new CatalogCountryCost(true, 32, 3, true, "US")],
+            used: 918,
+            quota: 2500,
+            freePlan: true,
+            daysLeft: 5,
+            daysInPeriod: 30);
+
+        var monthly = 3 * 30 + 32 * 4 + 30;
+        result.MonthlyCredits.ShouldBe(monthly);
+        result.RemainingCredits.ShouldBe(41);
+        result.FillCredits.ShouldBe(0);
+        result.OverQuota.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void A_full_month_above_the_quota_is_over_even_when_few_days_remain()
+    {
+        var result = CatalogCreditEstimate.Calculate(
+            [new CatalogCountryCost(true, 600, 3, true, "US")],
+            used: 0,
+            quota: 2500,
+            freePlan: true,
+            daysLeft: 1,
+            daysInPeriod: 30);
+
+        result.MonthlyCredits.ShouldBe(3 * 30 + 600 * 4 + 30);
+        result.RemainingCredits.ShouldBe(84);
+        result.OverQuota.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Credits_already_used_plus_the_days_left_can_still_pass_the_quota()
+    {
+        var result = CatalogCreditEstimate.Calculate(
+            [new CatalogCountryCost(true, 32, 3, true, "US")],
+            used: 2480,
+            quota: 2500,
+            freePlan: true,
+            daysLeft: 5,
+            daysInPeriod: 30);
+
+        result.RemainingCredits.ShouldBe(41);
+        result.OverQuota.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void The_one_time_fill_counts_in_full_against_the_days_left()
+    {
+        var result = CatalogCreditEstimate.Calculate(
+            [new CatalogCountryCost(true, 200, 3, false, "US")],
+            used: 2300,
+            quota: 2500,
+            freePlan: true,
+            daysLeft: 5,
+            daysInPeriod: 30);
+
+        result.FillCredits.ShouldBe(200);
+        result.OverQuota.ShouldBeTrue();
     }
 
     private static CatalogCountryCost Country(string code, int pages) => new(true, pages, 3, false, code);

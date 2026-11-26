@@ -13,6 +13,8 @@ public sealed class CatalogSetupException(string message) : Exception(message);
 public sealed record CatalogSetupDto(
     int Quota,
     int Used,
+    int DaysLeft,
+    int DaysInPeriod,
     string Plan,
     int FreeCountryLimit,
     int CreditsPerCall,
@@ -45,12 +47,14 @@ public sealed class CatalogConfigurationService(
     ICreditBudget budget,
     ISettingsStore settings,
     ScheduleReconciler reconciler,
-    CatalogBootstrap bootstrap)
+    CatalogBootstrap bootstrap,
+    IClock clock)
 {
     public async Task<CatalogSetupDto> GetAsync(CancellationToken cancellationToken = default)
     {
         var snapshot = await budget.GetSnapshotAsync(cancellationToken);
         var plan = await ReadPlanAsync(cancellationToken);
+        var (daysLeft, daysInPeriod) = await ReadWindowAsync(cancellationToken);
         var providers = await db.Providers.AsNoTracking()
             .Include(provider => provider.CatalogSources)
             .OrderBy(provider => provider.DisplayName)
@@ -59,6 +63,8 @@ public sealed class CatalogConfigurationService(
         return new CatalogSetupDto(
             snapshot.Quota,
             snapshot.Used,
+            daysLeft,
+            daysInPeriod,
             plan,
             CatalogOffers.FreeCountryLimit,
             CatalogOffers.CreditsPerCall,
@@ -134,7 +140,14 @@ public sealed class CatalogConfigurationService(
 
         var snapshot = await budget.GetSnapshotAsync(cancellationToken);
         var freePlan = await ReadPlanAsync(cancellationToken) != "paid";
-        var estimate = CatalogCreditEstimate.Calculate(selected, snapshot.Used, snapshot.Quota, freePlan);
+        var (daysLeft, daysInPeriod) = await ReadWindowAsync(cancellationToken);
+        var estimate = CatalogCreditEstimate.Calculate(
+            selected,
+            snapshot.Used,
+            snapshot.Quota,
+            freePlan,
+            daysLeft,
+            daysInPeriod);
         if (estimate.OverCountryLimit)
         {
             throw new CatalogSetupException(
@@ -144,7 +157,7 @@ public sealed class CatalogConfigurationService(
         if (estimate.OverQuota)
         {
             throw new CatalogSetupException(
-                $"This selection needs about {estimate.MonthlyCredits} Watchmode credits a month, and {estimate.FillCredits} to fill new catalogs. {snapshot.Used} of {snapshot.Quota} are already used.");
+                $"This selection needs about {estimate.MonthlyCredits} Watchmode credits in a full month. About {estimate.RemainingCredits} of those fall in the {daysLeft} days left, plus {estimate.FillCredits} to fill new catalogs. {snapshot.Used} of {snapshot.Quota} are already used.");
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -185,5 +198,11 @@ public sealed class CatalogConfigurationService(
         var raw = await settings.GetRawAsync(SettingsKeys.WatchmodePlan, cancellationToken);
         var plan = raw?.Trim().Trim('"').ToLowerInvariant();
         return string.IsNullOrWhiteSpace(plan) ? "free" : plan;
+    }
+
+    private async Task<(int DaysLeft, int DaysInPeriod)> ReadWindowAsync(CancellationToken cancellationToken)
+    {
+        var raw = await settings.GetRawAsync(SettingsKeys.WatchmodeBillingDayOfMonth, cancellationToken);
+        return WatchmodeQuotaUsageReader.RemainingDays(clock.UtcNow, WatchmodeQuotaUsageReader.ParseBillingDay(raw));
     }
 }

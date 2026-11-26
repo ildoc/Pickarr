@@ -26,7 +26,8 @@ public sealed class WatchmodeQuotaUsageReader(
             return new QuotaUsage(headerUsed, latestWithQuota.QuotaLimit);
         }
 
-        var billingDay = await GetBillingDayAsync(cancellationToken);
+        var billingDay = ParseBillingDay(
+            await settingsStore.GetRawAsync(SettingsKeys.WatchmodeBillingDayOfMonth, cancellationToken));
         var periodStart = ComputePeriodStart(clock.UtcNow, billingDay);
         var sum = await db.ApiUsages.AsNoTracking()
             .Where(x => x.Service == WatchmodeApiUsageHandler.ServiceName && x.Timestamp >= periodStart)
@@ -35,16 +36,21 @@ public sealed class WatchmodeQuotaUsageReader(
         return new QuotaUsage(sum, QuotaLimit: null);
     }
 
-    private async Task<int> GetBillingDayAsync(CancellationToken cancellationToken)
+    public static int ParseBillingDay(string? raw)
     {
-        var raw = await settingsStore.GetRawAsync(SettingsKeys.WatchmodeBillingDayOfMonth, cancellationToken);
         if (string.IsNullOrWhiteSpace(raw))
         {
             return 1;
         }
 
-        var day = JsonSerializer.Deserialize<int>(raw, JsonOptions);
-        return Math.Clamp(day, 1, 28);
+        try
+        {
+            return Math.Clamp(JsonSerializer.Deserialize<int>(raw, JsonOptions), 1, 28);
+        }
+        catch (JsonException)
+        {
+            return 1;
+        }
     }
 
     public static DateTime ComputePeriodStart(DateTime utcNow, int billingDayOfMonth)
@@ -57,5 +63,17 @@ public sealed class WatchmodeQuotaUsageReader(
         }
 
         return candidate;
+    }
+
+    /// <summary>
+    /// Days still inside the billing period, including today, and the length of that period.
+    /// </summary>
+    public static (int DaysLeft, int DaysInPeriod) RemainingDays(DateTime utcNow, int billingDayOfMonth)
+    {
+        var start = ComputePeriodStart(utcNow, billingDayOfMonth);
+        var daysInPeriod = Math.Max(1, (start.AddMonths(1) - start).Days);
+        var elapsedBeforeToday = Math.Max(0, (utcNow.Date - start.Date).Days);
+        var daysLeft = Math.Clamp(daysInPeriod - elapsedBeforeToday, 1, daysInPeriod);
+        return (daysLeft, daysInPeriod);
     }
 }
