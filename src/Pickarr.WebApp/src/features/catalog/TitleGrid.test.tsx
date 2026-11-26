@@ -68,7 +68,10 @@ describe('TitleGrid', () => {
   it('requests the next page when the list end is on screen', () => {
     const onLoadMore = vi.fn()
     class FakeObserver {
-      constructor(private readonly callback: IntersectionObserverCallback) {}
+      private readonly callback: IntersectionObserverCallback
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback
+      }
       observe() {
         this.callback(
           [{ isIntersecting: true } as IntersectionObserverEntry],
