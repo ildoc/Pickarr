@@ -278,20 +278,20 @@ public sealed class ImdbRatingImportTests
         double? voteImdb = null,
         int? voteImdbCount = null,
         double? voteBlended = null) => new()
-    {
-        Id = id,
-        ImdbId = imdbId,
-        MediaType = MediaTypes.Movie,
-        Category = TitleCategories.Movie,
-        MetadataStatus = MetadataStatuses.Ready,
-        VoteTmdb = voteTmdb,
-        VoteTmdbCount = voteTmdbCount,
-        VoteImdb = voteImdb,
-        VoteImdbCount = voteImdbCount,
-        VoteBlended = voteBlended,
-        CreatedAt = ImportedAt,
-        UpdatedAt = ImportedAt,
-    };
+        {
+            Id = id,
+            ImdbId = imdbId,
+            MediaType = MediaTypes.Movie,
+            Category = TitleCategories.Movie,
+            MetadataStatus = MetadataStatuses.Ready,
+            VoteTmdb = voteTmdb,
+            VoteTmdbCount = voteTmdbCount,
+            VoteImdb = voteImdb,
+            VoteImdbCount = voteImdbCount,
+            VoteBlended = voteBlended,
+            CreatedAt = ImportedAt,
+            UpdatedAt = ImportedAt,
+        };
 
     private static string FixturePath()
     {
