@@ -10,7 +10,8 @@ import {
 
 describe('format helpers', () => {
   it('maps categories and arr states', () => {
-    expect(categoryLabelKey('standup')).toBe('category.standup')
+    expect(categoryLabelKey('series')).toBe('category.series')
+    expect(categoryLabelKey('standup')).toBe('category.unknown')
     expect(arrStateLabelKey('notInLibrary')).toBe('arr.notInLibrary')
     expect(formatYear(null)).toBe('—')
     expect(formatYear(2024)).toBe('2024')

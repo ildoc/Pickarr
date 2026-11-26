@@ -29,7 +29,7 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
                 UPDATE "ImdbRatingSnapshot" SET "PriorMean" = "MeanVote";
                 """);
 
-            // Same pooled average as AudienceScore.Blend (m = 500, TMDB offset 0 until the next import).
+            // Bayesian average with m = 500; RemoveAudienceScorePrior replaces it with the plain vote-weighted mean.
             migrationBuilder.Sql(
                 """
                 UPDATE "Titles" SET "VoteBlended" = CASE

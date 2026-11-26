@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Pickarr.Core.Abstractions;
+using Pickarr.Core.Catalog;
 using Pickarr.Core.Domain;
 using Pickarr.Core.Domain.Entities;
 using Pickarr.Core.Metadata;
@@ -424,9 +425,7 @@ public sealed class EnrichmentService(
                 SeriesSeasonJson.MergeSummaries(title.SeasonsJson, details.Seasons));
         }
 
-        title.Category = TmdbStandUp.ResolveCategory(
-            title.MediaType,
-            details.Keywords.Select(k => k.Name));
+        title.Category = CatalogMediaMapping.ToCategory(title.MediaType);
     }
 
     private async Task UpsertGenresAsync(
@@ -465,6 +464,13 @@ public sealed class EnrichmentService(
             }
         }
 
+        var isStandUp = TmdbStandUp.HasStandUpKeyword(details.Keywords.Select(k => k.Name));
+        if (isStandUp)
+        {
+            await StandUpGenre.EnsureGenreAsync(db, [language], cancellationToken);
+        }
+
+        StandUpGenre.SyncLink(db, title, isStandUp);
         await db.SaveChangesAsync(cancellationToken);
     }
 

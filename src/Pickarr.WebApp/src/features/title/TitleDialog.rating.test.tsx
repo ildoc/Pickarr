@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { I18nextProvider } from 'react-i18next'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchTitle } from '../../api/catalog'
+import { fetchSeriesSeasons, fetchTitle } from '../../api/catalog'
 import { refreshTitleArr, setTitleSeasonMonitoring } from '../../api/arr'
 import { setRating } from '../../api/ratings'
 import { fetchSettings } from '../../api/settings'
@@ -352,6 +352,30 @@ describe('TitleDialog ratings', () => {
     expect(disclosure.parentElement).toHaveAttribute('open')
     await user.click(screen.getByRole('button', { name: 'Stop monitoring 1' }))
     await waitFor(() => expect(setTitleSeasonMonitoring).toHaveBeenCalledWith(42, 1, false))
+  })
+
+  it('lists seasons for a stand-up series', async () => {
+    const base = await vi.mocked(fetchTitle)(42)
+    vi.mocked(fetchTitle).mockResolvedValue({
+      ...base,
+      category: 'series',
+      genres: [{ id: -1, name: 'Stand-up' }],
+    })
+    vi.mocked(fetchSeriesSeasons).mockResolvedValueOnce([
+      { number: 1, name: 'Pilot run', episodeCount: 6, airDate: null, overview: null },
+    ])
+    renderDialog()
+
+    expect(await screen.findByRole('button', { name: /Pilot run/ })).toBeTruthy()
+    expect(fetchSeriesSeasons).toHaveBeenCalledWith(42, 1)
+    expect(screen.getByText('Genres: Stand-up')).toBeTruthy()
+  })
+
+  it('does not list seasons for a movie', async () => {
+    renderDialog()
+
+    expect(await screen.findByRole('heading', { name: 'Dialog Movie' })).toBeTruthy()
+    expect(fetchSeriesSeasons).not.toHaveBeenCalled()
   })
 
   it('renders ordered cast members with placeholders and conditional IMDb links', async () => {

@@ -145,14 +145,14 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task Single_source_title_shows_its_raw_rating_but_ranks_by_the_blend()
+    public async Task Shown_score_sort_and_filter_use_the_same_title_rating()
     {
         await using var db = await CreateDbAsync();
         var source = await SeedCatalogAsync(db);
         var titles = await SeedTitlesAsync(db, source.Id);
         titles.Movie.VoteTmdb = 9.5;
         titles.Movie.VoteTmdbCount = 3;
-        titles.Movie.VoteBlended = 7.02;
+        titles.Movie.VoteBlended = 9.5;
         titles.Series.VoteTmdb = 7.6;
         titles.Series.VoteTmdbCount = 900;
         titles.Series.VoteImdb = 7.8;
@@ -165,13 +165,13 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
         var sut = new TitleQueryService(db, new MemorySettingsStore(), new FixedClock(DateTime.UtcNow));
 
         var page = await sut.QueryTitlesAsync(source.Id, new TitleQueryRequest(Sort: "rating", Dir: "desc"));
-        page.Items.Select(item => item.Id).ShouldBe([titles.Series.Id, titles.Movie.Id, titles.StandUp.Id]);
+        page.Items.Select(item => item.Id).ShouldBe([titles.Movie.Id, titles.Series.Id, titles.StandUp.Id]);
         page.Items.Single(item => item.Id == titles.Movie.Id).RatingScore.ShouldBe(9.5);
         page.Items.Single(item => item.Id == titles.Series.Id).RatingScore.ShouldBe(7.79);
         page.Items.Single(item => item.Id == titles.StandUp.Id).RatingScore.ShouldBeNull();
 
         var filtered = await sut.QueryTitlesAsync(source.Id, new TitleQueryRequest(MinRating: 7.5));
-        filtered.Items.Select(item => item.Id).ShouldBe([titles.Series.Id]);
+        filtered.Items.Select(item => item.Id).ShouldBe([titles.Movie.Id, titles.Series.Id], ignoreOrder: true);
 
         (await sut.GetTitleAsync(titles.Movie.Id, source.Id))!.Ratings.Score.ShouldBe(9.5);
     }
@@ -271,7 +271,7 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
 
         result.EmptyReason.ShouldBeNull();
         result.Total.ShouldBe(3);
-        result.Items.Select(i => i.Category).OrderBy(x => x).ShouldBe(["movie", "series", "standup"]);
+        result.Items.Select(i => i.Category).OrderBy(x => x).ShouldBe(["movie", "series", "series"]);
         result.ArrFilter!.SonarrConfigured.ShouldBeTrue();
         result.ArrFilter.RadarrConfigured.ShouldBeFalse();
 
@@ -282,6 +282,28 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
         var seriesDetail = await sut.GetTitleAsync(titles.Series.Id, source.Id);
         seriesDetail!.Arr.CanAdd.ShouldBeTrue();
         seriesDetail.Arr.AddBlockedReason.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Stand_up_is_a_genre_and_the_legacy_type_filters_by_it()
+    {
+        await using var db = await CreateDbAsync();
+        var source = await SeedCatalogAsync(db);
+        var titles = await SeedTitlesAsync(db, source.Id);
+        var sut = new TitleQueryService(db, new MemorySettingsStore(), new FixedClock(DateTime.UtcNow));
+
+        var standUp = (await sut.GetTitleAsync(titles.StandUp.Id, source.Id))!;
+        standUp.Category.ShouldBe("series");
+        standUp.Genres.ShouldContain(g => g.Id == SyntheticGenres.StandUp && g.Name == SyntheticGenres.StandUpName);
+
+        var genres = await sut.ListGenresAsync(source.Id, favoritesOnly: false);
+        genres.ShouldContain(g => g.Id == SyntheticGenres.StandUp && g.Count == 1);
+
+        var legacy = await sut.QueryTitlesAsync(source.Id, new TitleQueryRequest(Types: ["standup"]));
+        legacy.Items.Select(i => i.Id).ShouldBe([titles.StandUp.Id]);
+
+        var series = await sut.QueryTitlesAsync(source.Id, new TitleQueryRequest(Types: ["series"]));
+        series.Items.Select(i => i.Id).OrderBy(id => id).ShouldBe([titles.Series.Id, titles.StandUp.Id]);
     }
 
     [Fact]
@@ -519,7 +541,7 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task Types_include_standup_and_genre_filter_narrows_the_catalog()
+    public async Task Types_are_movie_and_series_and_genre_filter_narrows_the_catalog()
     {
         await using var db = await CreateDbAsync();
         var source = await SeedCatalogAsync(db);
@@ -540,7 +562,7 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
         var sut = new TitleQueryService(db, settings, new FixedClock(new DateTime(2026, 11, 5, 12, 0, 0, DateTimeKind.Utc)));
 
         var types = await sut.ListTypesAsync(source.Id, favoritesOnly: false);
-        types.Select(t => t.Type).ShouldBe(["movie", "series", "standup"]);
+        types.Select(t => t.Type).ShouldBe(["movie", "series"]);
 
         var genres = await sut.ListGenresAsync(source.Id, favoritesOnly: false);
         genres.ShouldContain(g => g.Id == genre.Id && g.Name == "Azione");
@@ -630,7 +652,7 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
         var sut = new TitleQueryService(db, settings, new FixedClock(now));
 
         var types = await sut.ListEnabledTypesAsync();
-        types.Select(t => t.Type).ShouldBe(["movie", "series", "standup"]);
+        types.Select(t => t.Type).ShouldBe(["movie", "series"]);
 
         var genres = await sut.ListEnabledGenresAsync();
         genres.ShouldContain(g => g.Id == sharedGenre.Id && g.Name == "Dramma");
@@ -898,7 +920,7 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
         var standup = new Title
         {
             MediaType = MediaTypes.Series,
-            Category = TitleCategories.StandUp,
+            Category = TitleCategories.Series,
             OriginalTitle = "Stand Up Special",
             OriginalTitleNormalized = "stand up special",
             ReleaseYear = 2024,
@@ -907,7 +929,16 @@ public sealed class TitleQueryServiceTests(ITestOutputHelper output)
             UpdatedAt = now,
         };
         db.Titles.AddRange(movie, series, standup);
+        db.Genres.Add(new Genre { Id = SyntheticGenres.StandUp });
         await db.SaveChangesAsync();
+
+        db.GenreLocalizations.Add(new GenreLocalization
+        {
+            GenreId = SyntheticGenres.StandUp,
+            Language = "it-IT",
+            Name = SyntheticGenres.StandUpName,
+        });
+        db.TitleGenres.Add(new TitleGenre { TitleId = standup.Id, GenreId = SyntheticGenres.StandUp });
 
         movie.Localizations.Add(new TitleLocalization
         {

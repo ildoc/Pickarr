@@ -1,6 +1,6 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   fetchCatalogTypes,
@@ -12,6 +12,7 @@ import {
 import { fetchRecommendations, fetchRecoStatus } from '../../api/recommendations'
 import { fetchSettings } from '../../api/settings'
 import { BackToTop } from '../../components/BackToTop'
+import { useFilterSearchParams } from '../../lib/filterParams'
 import { savePreferredSourceId } from '../../lib/sourcePreference'
 import { FilterBar } from '../catalog/FilterBar'
 import { TitleGrid } from '../catalog/TitleGrid'
@@ -22,7 +23,7 @@ import { LearningProgress } from './LearningProgress'
 export function ForYouPage() {
   const { t } = useTranslation()
   const { active } = useProfiles()
-  const [params, setParams] = useSearchParams()
+  const [params, setParams] = useFilterSearchParams()
 
   const type = params.get('type') ?? ''
   const genre = params.get('genre') ?? ''

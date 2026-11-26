@@ -213,7 +213,7 @@ Unique index `(ProviderId, CountryCode)`.
 | ImdbId | text null | `tt…` |
 | TvdbId | int null | series only |
 | MediaType | text | `Movie` / `Series` (derived from TMDB type, or from Watchmode if TMDB is absent) |
-| Category | text | `Movie` / `Series` / `StandUp` |
+| Category | text | `Movie` / `Series`, same as `MediaType`. Stand-up is genre `-1` (BR-02) |
 | OriginalTitle | text null | |
 | ReleaseYear | int null | |
 | RuntimeMinutes | int null | movies |
@@ -222,7 +222,7 @@ Unique index `(ProviderId, CountryCode)`.
 | VoteTmdbCount | int null | |
 | VoteImdb | real null | IMDb dataset rating when `ImdbId` matches `tconst` |
 | VoteImdbCount | int null | |
-| VoteBlended | real null | audience ranking score (see *Audience score*) |
+| VoteBlended | real null | audience score, vote-weighted IMDb/TMDB mean (see *Audience score*) |
 | Popularity | real null | |
 | OriginalLanguage | text null | |
 | PosterPath, BackdropPath | text null | neutral TMDB paths |
@@ -235,20 +235,13 @@ Unique index `(ProviderId, CountryCode)`.
 
 Indexes: partial unique `(TmdbType, TmdbId)` (`WHERE TmdbId IS NOT NULL`), `TvdbId`, `ImdbId`, `VoteBlended`, `(MetadataStatus)`, `(ReleaseYear)`.
 
-**Audience score.** `VoteBlended` is computed by `AudienceScore.Blend` from IMDb (`VoteImdb`, `VoteImdbCount`) and TMDB (`VoteTmdb`, `VoteTmdbCount`). Both scales are 0–10. It is the ranking score: `sort=rating`, `minRating`, the recommendation prior, and the level-3 vote feature read it.
+**Audience score.** `VoteBlended` is computed by `AudienceScore.Blend` from IMDb (`VoteImdb`, `VoteImdbCount`) and TMDB (`VoteTmdb`, `VoteTmdbCount`). Both scales are 0–10. The score describes the title alone: there is no catalog prior and no shrinkage, so a title with few votes keeps its own rating. The same value is shown (`ratingScore` in lists, `ratings.score` in the detail) and read by `sort=rating`, `minRating`, the recommendation prior, the audience-quality multiplier, and the level-3 vote feature.
 
 - A source is weightable when its rating is present and its vote count is greater than 0.
-- Votes of both sources are pooled into one Bayesian average, shrunk once: `VoteBlended = (v_imdb·R_imdb + α·v_tmdb·R'_tmdb + m·C) / (v_imdb + α·v_tmdb + m)`, where a missing or non-weightable source contributes nothing.
-- `m = 500`, `α = 1` (weight of one TMDB vote against one IMDb vote).
-- `R'_tmdb = clamp(R_tmdb + δ, 0, 10)` moves TMDB onto the IMDb scale.
-- `C` is the plain mean of the IMDb ratings (with votes) of catalog titles found in the dataset. Without such titles it falls back to the vote-weighted dataset mean `Σ(R·v) / Σ(v)`, stored as `ImdbRatingSnapshot.MeanVote`.
-- `δ` is the mean `R_imdb − R_tmdb` over catalog titles with at least 50 votes on both sources; it is 0 with fewer than 20 such titles.
-- `C` and `δ` are fitted at each successful import, before any write, and stored as `ImdbRatingSnapshot.PriorMean` and `TmdbOffset`.
+- `VoteBlended = (v_imdb·R_imdb + v_tmdb·R_tmdb) / (v_imdb + v_tmdb)` over weightable sources: the vote-weighted mean of the two raw ratings, always between them. With one weightable source it is that source's rating.
 - No weightable source: `VoteBlended` is null.
 
-The displayed score (`ratingScore` in lists, `ratings.score` in the detail) comes from `AudienceScore.Display`: `VoteBlended` when both sources are weightable, otherwise the raw rating of the only weightable source, otherwise null. A single-source title therefore shows its raw rating but ranks by the shrunk score.
-
-`m`, `α`, the calibration thresholds, and the formula are code constants, not settings. The import recomputes every title with an IMDb id or a score. Enrichment recomputes the title it just fetched from the local `ImdbTitleRatings` table and the stored `C` and `δ`, without downloading the dataset; before the first import it shrinks toward the mean TMDB rating of the catalog. The `AddAudienceScorePrior` migration recomputes `VoteBlended` with the same rule (`δ = 0`, `C` from the snapshot or the catalog TMDB mean).
+`ImdbRatingSnapshot.MeanVote` (vote-weighted mean of the dataset) is informational and does not enter the formula. The import recomputes every title with an IMDb id or a score. Enrichment recomputes the title it just fetched from the local `ImdbTitleRatings` table, without downloading the dataset. The `RemoveAudienceScorePrior` migration recomputes `VoteBlended` with this rule.
 
 **Detailed cast** is stored separately from recommendation credits. `CastPeople` contains the shared TMDB person id, name, optional profile path, and optional IMDb person id. `TitleCastMembers` links a title to a person with a unique position. A completed empty fetch is represented by `Titles.CastFetchedAt` being non-null with no associations; before the first fetch, the API may expose the legacy `cast` name array as a fallback.
 
@@ -447,7 +440,7 @@ Rules:
 
 - **Language fallback (BR-15):** call with the source language. If `overview` or title are empty, repeat with `en-US` and store **two** localizations.
 - **TVDB id:** from `external_ids.tvdb_id` for series. `imdb_id` from `external_ids` (series) or from the detail (movies).
-- **Stand-up:** UI category from TMDB keyword **names** that normalize to `standupcomedy` (e.g. “stand-up comedy”). No hardcoded TMDB keyword ids (ids drift / collide). Watchmode genre preference (D-06) is not wired yet.
+- **Stand-up:** synthetic genre `-1` (`SyntheticGenres.StandUp`, name “Stand-up” in every metadata language) linked when a TMDB keyword **name** normalizes to `standupcomedy` (e.g. “stand-up comedy”), and unlinked when it no longer does. No hardcoded TMDB keyword ids (ids drift / collide). Negative ids never collide with TMDB genre ids.
 - **Image URLs:** built by the backend (`secure_base_url` + size + `PosterPath`); suggested `w342` for the grid, `w500` for the card, `w780` for the backdrop.
 - **Attribution:** required logo and wording shown in the UI (FR-MET-07).
 
@@ -575,7 +568,7 @@ Configured in Sonarr/Radarr (*Settings → Connect → Webhook*), method `POST`.
 | `RecoEvalJob` | manual | ml | 1 | 1 |
 | `RecoModelDownloadJob` | manual (download or detect) | ml | 1 | 1 |
 
-`ImdbRatingsJob` downloads `https://datasets.imdbws.com/title.ratings.tsv.gz`, replaces the local ratings table indexed by `tconst`, and refreshes the stored title scores. A failed download or parse leaves the previous table and title scores in place. When that import is the first one, or the prior mean `C` or the TMDB offset `δ` moves by at least 0.05, the job enqueues `RecoBuildJob`.
+`ImdbRatingsJob` downloads `https://datasets.imdbws.com/title.ratings.tsv.gz`, replaces the local ratings table indexed by `tconst`, and refreshes the stored title scores. A failed download or parse leaves the previous table and title scores in place. After every successful import the job enqueues `RecoBuildJob`, because title scores may have changed.
 
 `ml` queue: second `AddHangfireServer` with `WorkerCount = 1` and `Queues = ["ml"]`, so long embedding/build work does not saturate `sync`/`arr`.
 
@@ -800,9 +793,9 @@ Prefix `/api/v1`. JSON `camelCase`. Pagination with `page` (from 1) and `pageSiz
 
 **`GET /catalog/sources/{sourceId}/titles`** — grid/search.
 
-Query: `q`, `view` (`all`|`new`|`leaving`|`removed`), `type` (multi: `movie`,`series`,`standup`), `genre` (multi, id), `yearFrom`, `yearTo`, `arrState` (multi: `notInLibrary`,`missing`,`downloading`,`downloaded`,`partial`), `includeRemoved` (bool), `minRating`, `sort` (`relevance`|`added`|`year`|`rating`|`title`), `dir` (`asc`|`desc`), `page`, `pageSize`.
+Query: `q`, `view` (`all`|`new`|`leaving`|`removed`), `type` (multi: `movie`,`series`; legacy `standup` adds genre `-1`), `genre` (multi, id), `yearFrom`, `yearTo`, `arrState` (multi: `notInLibrary`,`missing`,`downloading`,`downloaded`,`partial`), `includeRemoved` (bool), `minRating`, `sort` (`relevance`|`added`|`year`|`rating`|`title`), `dir` (`asc`|`desc`), `page`, `pageSize`.
 
-Favorites are not filtered on the catalog: use `GET /favorites` and the UI route `/list`. Any `favorite` flag on the catalog query is ignored. `minRating` and `sort=rating` use the stored `VoteBlended` ranking score, not the displayed `ratingScore` (they differ for single-source titles). A title with no blended score does not pass `minRating`.
+Favorites are not filtered on the catalog: use `GET /favorites` and the UI route `/list`. Any `favorite` flag on the catalog query is ignored. `minRating` and `sort=rating` use `ratingScore`, the stored blended score. A title with no blended score does not pass `minRating`.
 
 ```json
 {
@@ -877,6 +870,8 @@ Favorites are not filtered on the catalog: use `GET /favorites` and the UI route
   }
 }
 ```
+
+`category` is the TMDB type (`movie` / `series`). The SPA shows the season and episode list for `series`; stand-up series carry genre `-1` and keep it.
 
 For a title not in the library `arr` is `{ "kind": "radarr", "state": "notInLibrary", "canAdd": true, "canDelete": false, "addBlockedReason": null }`; without a configured instance `canAdd` is `false` and `addBlockedReason` is `notConfigured`. Catalog list/query endpoints always return Series and Movie regardless of Arr configuration; the SPA hides the title-dialog Library section when `addBlockedReason` is `notConfigured`.
 

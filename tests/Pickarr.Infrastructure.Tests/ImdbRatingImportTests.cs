@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.IO.Compression;
 using System.Net;
 using System.Text;
@@ -7,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 using Pickarr.Core.Abstractions;
 using Pickarr.Core.Domain;
 using Pickarr.Core.Domain.Entities;
-using Pickarr.Core.Metadata;
 using Pickarr.Infrastructure.Metadata;
 using Pickarr.Infrastructure.Persistence;
 using Shouldly;
@@ -36,7 +34,6 @@ public sealed class ImdbRatingImportTests
         {
             Id = ImdbRatingSnapshot.SingletonId,
             MeanVote = 1,
-            PriorMean = 1,
             RowCount = 1,
             ImportedAt = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
             SourceUrl = "https://example.test/old.gz",
@@ -52,9 +49,6 @@ public sealed class ImdbRatingImportTests
         var result = await new ImdbRatingImporter(db, new FixedClock(ImportedAt)).ImportAsync(gzip);
 
         result.MeanVote.ShouldBe(7);
-        // Only title 1 is in the new dump: C is its IMDb rating, too few pairs for an offset.
-        result.Prior.ShouldBe(new AudiencePrior(8, 0));
-        result.PreviousPrior.ShouldBe(new AudiencePrior(1, 0));
         result.RowCount.ShouldBe(2);
         result.TitlesUpdated.ShouldBe(3);
 
@@ -62,8 +56,6 @@ public sealed class ImdbRatingImportTests
         rows.Select(row => row.Tconst).ShouldBe(["tt0000001", "tt0000002"]);
         var snapshot = await db.ImdbRatingSnapshots.SingleAsync();
         snapshot.MeanVote.ShouldBe(7);
-        snapshot.PriorMean.ShouldBe(8);
-        snapshot.TmdbOffset.ShouldBe(0);
         snapshot.RowCount.ShouldBe(2);
         snapshot.ImportedAt.ShouldBe(ImportedAt);
         snapshot.SourceUrl.ShouldBe(HttpImdbRatingsSource.DatasetUrl);
@@ -71,21 +63,20 @@ public sealed class ImdbRatingImportTests
         var matched = await db.Titles.SingleAsync(title => title.Id == 1);
         matched.VoteImdb.ShouldBe(8);
         matched.VoteImdbCount.ShouldBe(500);
-        matched.VoteBlended!.Value.ShouldBe((8.0 * 500 + 6.0 * 500 + 8.0 * 500) / 1500, 1e-12);
+        matched.VoteBlended!.Value.ShouldBe(7, 1e-12);
         matched.VoteTmdb.ShouldBe(6);
         matched.VoteTmdbCount.ShouldBe(500);
 
-        var tmdbScore = (7.4 * 80 + 8.0 * 500) / 580;
         var removed = await db.Titles.SingleAsync(title => title.Id == 2);
         removed.VoteImdb.ShouldBeNull();
         removed.VoteImdbCount.ShouldBeNull();
-        removed.VoteBlended!.Value.ShouldBe(tmdbScore, 1e-12);
+        removed.VoteBlended!.Value.ShouldBe(7.4, 1e-12);
         removed.VoteTmdb.ShouldBe(7.4);
         removed.VoteTmdbCount.ShouldBe(80);
 
         var tmdbOnly = await db.Titles.SingleAsync(title => title.Id == 3);
         tmdbOnly.VoteImdb.ShouldBeNull();
-        tmdbOnly.VoteBlended!.Value.ShouldBe(tmdbScore, 1e-12);
+        tmdbOnly.VoteBlended!.Value.ShouldBe(7.4, 1e-12);
         tmdbOnly.VoteTmdb.ShouldBe(7.4);
 
         var untouched = await db.Titles.SingleAsync(title => title.Id == 4);
@@ -112,50 +103,38 @@ public sealed class ImdbRatingImportTests
             "tconst\taverageRating\tnumVotes\ntt0000002\t5.0\t100\n");
         var result = await importer.ImportAsync(second);
 
-        // No catalog title is in either dump: C falls back to the dump mean.
-        result.PreviousPrior.ShouldBe(new AudiencePrior(7, 0));
-        result.Prior.ShouldBe(new AudiencePrior(5, 0));
         result.MeanVote.ShouldBe(5);
         (await db.ImdbTitleRatings.SingleAsync()).Tconst.ShouldBe("tt0000002");
         var title = await db.Titles.SingleAsync();
         title.VoteImdb.ShouldBeNull();
         title.VoteImdbCount.ShouldBeNull();
-        title.VoteBlended.ShouldBe(5.5);
+        title.VoteBlended!.Value.ShouldBe(6, 1e-12);
         title.VoteTmdb.ShouldBe(6);
         title.VoteTmdbCount.ShouldBe(500);
     }
 
     [Fact]
-    public async Task Import_fits_the_catalog_mean_and_tmdb_offset()
+    public async Task Few_votes_keep_the_title_rating_without_pull_toward_the_catalog()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<PickarrDbContext>().UseSqlite(connection).Options;
         await using var db = new PickarrDbContext(options);
         await db.Database.EnsureCreatedAsync();
-        var dump = new StringBuilder("tconst\taverageRating\tnumVotes\n");
-        for (var id = 1; id <= AudienceScore.CalibrationMinimumPairs; id++)
-        {
-            var tconst = $"tt{id:D7}";
-            dump.Append(CultureInfo.InvariantCulture, $"{tconst}\t8.0\t500\n");
-            db.Titles.Add(Title(id, tconst, voteTmdb: 7.6, voteTmdbCount: 100));
-        }
-
-        dump.Append("tt9000000\t2.0\t1000000\n");
-        db.Titles.Add(Title(100, null, voteTmdb: 7.6, voteTmdbCount: 500));
+        db.Titles.AddRange(
+            Title(1, "tt0000001", voteTmdb: 7.1, voteTmdbCount: 20),
+            Title(2, "tt0000002"),
+            Title(3, "tt0000003", voteTmdb: 3.0, voteTmdbCount: 10_000));
         await db.SaveChangesAsync();
 
-        await using var gzip = Gzip(dump.ToString());
-        var result = await new ImdbRatingImporter(db, new FixedClock(ImportedAt)).ImportAsync(gzip);
+        await using var gzip = Gzip(
+            "tconst\taverageRating\tnumVotes\ntt0000001\t7.4\t799\ntt0000002\t9.1\t12\ntt0000003\t3.0\t1000000\n");
+        await new ImdbRatingImporter(db, new FixedClock(ImportedAt)).ImportAsync(gzip);
 
-        result.Prior.Mean.ShouldBe(8.0, 1e-12);
-        result.Prior.TmdbOffset.ShouldBe(0.4, 1e-12);
-        var snapshot = await db.ImdbRatingSnapshots.SingleAsync();
-        snapshot.PriorMean.ShouldBe(8.0, 1e-12);
-        snapshot.TmdbOffset.ShouldBe(0.4, 1e-12);
-
-        var tmdbOnly = await db.Titles.SingleAsync(title => title.Id == 100);
-        tmdbOnly.VoteBlended!.Value.ShouldBe(8.0, 1e-12);
+        var titles = await db.Titles.OrderBy(title => title.Id).ToListAsync();
+        titles[0].VoteBlended!.Value.ShouldBe((7.4 * 799 + 7.1 * 20) / 819, 1e-12);
+        titles[1].VoteBlended!.Value.ShouldBe(9.1, 1e-12);
+        titles[2].VoteBlended!.Value.ShouldBe(3.0, 1e-12);
     }
 
     [Theory]

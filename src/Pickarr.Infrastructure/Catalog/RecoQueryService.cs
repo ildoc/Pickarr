@@ -118,23 +118,14 @@ public sealed class RecoQueryService(
         if (needsTitleFilters)
         {
             var titleQuery = db.Titles.AsNoTracking().AsQueryable();
-            if (query.Types is { Count: > 0 })
+            var categories = TitleTypeFilter.Categories(query.Types);
+            if (categories.Count > 0)
             {
-                var categories = query.Types
-                    .Select(MapTypeToCategory)
-                    .Where(c => c is not null)
-                    .Cast<string>()
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                if (categories.Count > 0)
-                {
-                    titleQuery = titleQuery.Where(t => categories.Contains(t.Category));
-                }
+                titleQuery = titleQuery.Where(t => categories.Contains(t.Category));
             }
 
-            if (query.Genres is { Count: > 0 })
+            if (TitleTypeFilter.GenresWithLegacyTypes(query.Types, query.Genres) is { Count: > 0 } genreIds)
             {
-                var genreIds = query.Genres.ToList();
                 titleQuery = titleQuery.Where(t =>
                     db.TitleGenres.Any(tg => tg.TitleId == t.Id && genreIds.Contains(tg.GenreId)));
             }
@@ -999,7 +990,7 @@ public sealed class RecoQueryService(
             TmdbImageUrls.Build(title.PosterPath, "w342"),
             MapGenres(title, language),
             title.VoteTmdb,
-            TitleQueryService.DisplayScore(title),
+            title.VoteBlended,
             personalProfileId is int favoriteProfileId && title.Favorites.Any(f => f.ProfileId == favoriteProfileId),
             personalProfileId is int watchedProfileId && title.WatchedItems.Any(w => w.ProfileId == watchedProfileId),
             personalProfileId is int ratedProfileId
@@ -1396,19 +1387,5 @@ public sealed class RecoQueryService(
             arrItem.QueueProgress);
     }
 
-    private static string? MapTypeToCategory(string type) => type.Trim().ToLowerInvariant() switch
-    {
-        "movie" => TitleCategories.Movie,
-        "series" => TitleCategories.Series,
-        "standup" or "stand-up" or "stand_up" => TitleCategories.StandUp,
-        _ => null,
-    };
-
-    private static string ToApiCategory(string category) => category switch
-    {
-        TitleCategories.Movie => "movie",
-        TitleCategories.Series => "series",
-        TitleCategories.StandUp => "standup",
-        _ => category.ToLowerInvariant(),
-    };
+    private static string ToApiCategory(string category) => TitleTypeFilter.ToApiType(category);
 }

@@ -10,8 +10,8 @@ On `/catalog`:
 - Quick filters: **All**, **New**, **Leaving**, **Recently removed**, **In library**.
 - **In library** shows only titles whose cached Sonarr/Radarr status is **Downloaded**, within the selected provider and country. Missing, downloading, and partial titles are excluded.
 - The search field has a **Clear search** button when text is entered; clearing it keeps the other filters.
-- Filters: type, genre, year, library state, sort, include removed.
-- Infinite poster grid with library badges, favorite heart, and rating controls. The poster badge is the weighted IMDb and TMDB score, to one decimal. With both sources, their votes are pooled (TMDB first adjusted to the IMDb scale) and the result is pulled toward the catalog average in proportion to how few votes there are. With one source, the badge shows that source's score unchanged, but sorting by rating and the minimum-rating filter still use the pulled score, so a title with a handful of votes does not jump to the top. The badge is hidden when no source has votes.
+- Filters: type (movies or series), genre, year, library state, sort, include removed. Stand-up is a genre, set from the TMDB “stand-up comedy” keyword.
+- Infinite poster grid with library badges, favorite heart, and rating controls. The poster badge is the weighted IMDb and TMDB score, to one decimal: the average of the two ratings weighted by how many votes each has, so it always sits between them and closer to the source with more votes. With one source, the badge shows that source's score. The same score drives sorting by rating and the minimum-rating filter. The badge is hidden when no source has votes.
 - With recommendations enabled, the **For you** row under **All** (without search) follows the selected provider, country, type, and genre.
 - The preferred source is remembered per profile (`pickarr.sourceId.{profileId}`).
 

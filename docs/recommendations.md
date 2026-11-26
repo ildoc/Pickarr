@@ -150,7 +150,7 @@ MoSCoW priority: **M** for the feature MVP, **S** should, **C** could.
 | FR-REC-RC-04 | A title without `Availability` on enabled sources is never returned. | M |
 | FR-REC-RC-05 | With no ratings or signals, *For you* shows the prior (level 0) and declares it, with the learning indicator. | M |
 | FR-REC-RC-06 | Every item reports reasons (similar titles with a like, genres or keywords, or “highly rated / popular”). | M |
-| FR-REC-RC-07 | Filters: type (movie/series/stand-up), genre, year, library status. By default titles already in library (*Downloaded*, *Downloading*, *Partial*, *Missing*) are excluded. The user can include them. | M |
+| FR-REC-RC-07 | Filters: type (movie/series), genre (Stand-up included), year, library status. By default titles already in library (*Downloaded*, *Downloading*, *Partial*, *Missing*) are excluded. The user can include them. | M |
 | FR-REC-RC-08 | Titles that already have a rating or are marked *Watched* are excluded. | M |
 | FR-REC-RC-09 | **Similar titles**, at the bottom of the dialog on multiple rows: neighbors of the open title that have an `Availability` on at least one enabled source, with `places`. Does not require ratings. Not limited to the source from which the dialog was opened. | M |
 | FR-REC-RC-10 | Diversity: MMR re-ranking on the top results, so the page is not filled with a single genre or a single franchise. | S |
@@ -163,7 +163,7 @@ MoSCoW priority: **M** for the feature MVP, **S** should, **C** could.
 |---|---|---|
 | FR-REC-CD-01 | The pool is the set of `Title` with at least one `Availability` on an enabled source (`CatalogSource.IsEnabled` and `Provider.IsEnabled`). It is the same criterion `TitleQueryService` uses to list sources. | M |
 | FR-REC-CD-02 | A populated `RemovedAt` does not take the title out of the pool or out of that source’s scope. | M |
-| FR-REC-CD-03 | Already-imported types (movie, series, stand-up, FR-CAT-03) are the perimeter. The catalog is not widened for recommendations. | M |
+| FR-REC-CD-03 | Already-imported types (movie, series, FR-CAT-03) are the perimeter. The catalog is not widened for recommendations. | M |
 | FR-REC-CD-04 | Keywords and credits used by level 1 are persisted from the TMDB payload enrichment already downloads (`append_to_response=keywords,credits`). It is not a second title-discovery pipeline. | M |
 
 ### 3.5 Local model (FR-REC-ML)
@@ -611,7 +611,7 @@ pop(t)   = log(1 + Popularity) normalized to [0, 1] on the pool
 Prior(t) = 0.7 · norm(bayes) + 0.3 · pop
 ```
 
-`VoteBlended` already pools both sources and shrinks them toward the catalog mean with `m = 500` (formula in `technical-spec.md`, *Audience score*), so the prior does not shrink it again. Title without a blended score: `bayes` falls to `C`, or to 0 when the pool has none, and `pop` falls to 0 when popularity is missing. It stays in the pool. The prior can be computed per type (movie / series / stand-up). MMR (§12.8) completes variety.
+`VoteBlended` is the vote-weighted mean of the IMDb and TMDB ratings (formula in `technical-spec.md`, *Audience score*). It is not shrunk, here or at storage: a title's score depends on its own votes only. Title without a blended score: `bayes` falls to `C`, or to 0 when the pool has none, and `pop` falls to 0 when popularity is missing. It stays in the pool. The prior can be computed per type (movie / series). MMR (§12.8) completes variety.
 
 ### 12.2bis Household prior
 
@@ -626,7 +626,7 @@ Terms, in order of available data:
 | `g:{genreId}` | `TitleGenre` | already in DB; id = TMDB id |
 | `l:{OriginalLanguage}` | `Title` | already in DB |
 | `y:{decade}` | `ReleaseYear` | already in DB |
-| `t:{Category}` | `Title.Category` | `movie` / `series` / `standup` |
+| `t:{Category}` | `Title.Category` | `movie` / `series` (stand-up is genre term `g:-1`) |
 | `k:{keywordId}` | `TitleKeywords` | after §11.2 |
 | `p:{personId}` | `TitleCredits` role `Cast` | after §11.2 |
 | `d:{personId}` | `TitleCredits` `Director` or `Creator` | after §11.2 |
@@ -677,7 +677,7 @@ Score(t)    = (1 − w) · Prior'(t) + w · Personal(t)     // FuseScore; Prior'
 
 ### 12.6 Level 3 — optional
 
-With at least `reco.ml.minRatings` explicit ratings (default 100, at least 20 per class), regularized logistic in ML.NET learns *Like* versus *not Like*. Features include `[x_t hashed, raw Sparse cosine, mapped Knn score, Prior, sparse/knn fusion weights, personal weight, component availability, year, vote, popularity, vote count]`. The vote feature is the stored blended score divided by 10 (missing → 0.5). The vote-count feature is `log10(1+v)/6`, capped at 1, where `v` is the sum of IMDb and TMDB counts that have a rating and a positive count (missing or zero → 0). The feature scores are not pool-min-max normalized; weights and availability flags make the actual fusion inputs explicit. Training features are cross-fitted in five deterministic partitions: each partition's features are computed without any of its target ratings, including the example's own label. The evaluator and recommendation rebuild use the same training path. The model is not persisted, so the next rebuild trains and scores on the current columns. The IMDb import enqueues that rebuild immediately only when there is no previous global mean, or that mean moves by at least 0.05.
+With at least `reco.ml.minRatings` explicit ratings (default 100, at least 20 per class), regularized logistic in ML.NET learns *Like* versus *not Like*. Features include `[x_t hashed, raw Sparse cosine, mapped Knn score, Prior, sparse/knn fusion weights, personal weight, component availability, year, vote, popularity, vote count]`. The vote feature is the stored blended score divided by 10 (missing → 0.5). The vote-count feature is `log10(1+v)/6`, capped at 1, where `v` is the sum of IMDb and TMDB counts that have a rating and a positive count (missing or zero → 0). The feature scores are not pool-min-max normalized; weights and availability flags make the actual fusion inputs explicit. Training features are cross-fitted in five deterministic partitions: each partition's features are computed without any of its target ratings, including the example's own label. The evaluator and recommendation rebuild use the same training path. The model is not persisted, so the next rebuild trains and scores on the current columns. Every successful IMDb import enqueues that rebuild.
 
 The offline gate compares level 3 with the **effective combined score** (prior fused with the available sparse/kNN components), not the standalone level-2/kNN metric. Both scores must use the same positive folds and the same unrated candidates; the comparison needs at least 10 matching folds, at least 20 Love/Like and 20 Dislike ratings, and level 3 must exceed the combined AUC by at least 0.01. Missing data, classes, an unavailable combined metric, or incomplete folds keep level 3 inactive. `Level3SkipReason` distinguishes `below_min_ratings`, `below_min_per_class`, `insufficient_retrieval_data`, `l3_unavailable`, `insufficient_l3_folds`, and the new `did_not_beat_combined` value.
 
@@ -794,7 +794,7 @@ Added to `TitleListItemDto` and the detail DTO, so catalog, list, and dialog sho
 |---|---|
 | `scope` | `source` (default) or `enabled` |
 | `sourceId` | Required if `scope=source`. It is the `CatalogSource` id. With `scope=enabled` it is optional and only chooses the name language. |
-| `type` | `movie`, `series`, `standup`, repeatable or CSV, like the catalog |
+| `type` | `movie`, `series` (legacy `standup` = genre `-1`), repeatable or CSV, like the catalog |
 | `genre` | genre id, CSV |
 | `yearFrom`, `yearTo` | |
 | `includeInLibrary` | default `false` |

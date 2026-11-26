@@ -18,7 +18,13 @@ public static class TitleCategories
 {
     public const string Movie = "Movie";
     public const string Series = "Series";
-    public const string StandUp = "StandUp";
+}
+
+/// <summary>Genres Pickarr derives itself; ids are negative so they never collide with TMDB genre ids.</summary>
+public static class SyntheticGenres
+{
+    public const int StandUp = -1;
+    public const string StandUpName = "Stand-up";
 }
 
 public static class AvailabilityEventTypes

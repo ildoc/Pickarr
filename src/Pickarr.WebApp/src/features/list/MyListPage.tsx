@@ -1,8 +1,8 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { fetchMyList, fetchMyListGenres, fetchMyListTypes } from '../../api/favorites'
+import { useFilterSearchParams } from '../../lib/filterParams'
 import { useDebouncedValue } from '../../lib/useDebouncedValue'
 import { FilterBar } from '../catalog/FilterBar'
 import { TitleGrid } from '../catalog/TitleGrid'
@@ -10,7 +10,7 @@ import { TitleDialog } from '../title/TitleDialog'
 
 export function MyListPage() {
   const { t } = useTranslation()
-  const [params, setParams] = useSearchParams()
+  const [params, setParams] = useFilterSearchParams()
 
   const q = params.get('q') ?? ''
   const type = params.get('type') ?? ''

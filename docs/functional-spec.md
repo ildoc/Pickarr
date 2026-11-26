@@ -47,7 +47,7 @@ Pickarr is a **self-hosted * * application without authentication. An installati
 **Incluso (v1)**
 
 - Servizio Netflix, paesi Italia (IT) e Stati Uniti (US).
-- Types of content: movies, TV series, stand-up.
+- Types of content: movies and TV series. Stand-up is a genre on either type.
 - Scheduled synchronization of the catalogue with availability history.
 - Arricchimento metadati da TMDB (e id incrociati IMDb/TVDB).
 - UI web desktop, tema scuro, interfaccia internazionalizzata (inglese di default).
@@ -77,7 +77,7 @@ Pickarr is a **self-hosted * * application without authentication. An installati
 |---|---|
 | **Servizio (Provider)** | Servizio di streaming, es. Netflix. |
 | ** Catalogue source ** | Pair *service + country*, e.g. "Netflix IT". It's the drive you sync and browse on. |
-| **Title** | Movie, series or stand-up. It has a unique identity independent of the country. |
+| **Title** | Movie or series. It has a unique identity independent of the country. |
 | **Availability** | Relationship between a title and a catalog source, with its dates (addition, removal, expiration). |
 | **Baseline** | First complete import of a source. The titles present at that time are not considered "news". |
 | **Credits** | Watchmode API consumption units (2,500/mese in free plan). |
@@ -146,7 +146,7 @@ Priority (MoSCoW): **M** = Must (MVP), **S** = Should, **C** = Could, **W** = Wo
 |---|---|---|
 | FR-CAT-01 | The system maintains a catalog for each ** catalog source ** (service + country) enabled. First install does not enable any catalog by default; the mandatory onboarding wizard requires at least one provider and one country. | M |
 | FR-CAT-02 | User can enable/disabilitare source, choose metadata language and sync frequencies. | M |
-| FR-CAT-03 | * * Movie **, ** series ** and ** stand-up ** types are imported. The other types (anime, kids) are not imported into v1, but the model must be able to accommodate them without destructive migrations. | M |
+| FR-CAT-03 | **Movie** and **series** types are imported. Stand-up titles are movies or series with the Stand-up genre (BR-02). The other types (anime, kids) are not imported into v1, but the model must be able to accommodate them without destructive migrations. | M |
 | FR-CAT-04 | ** Incremental sync ** scheduled (cron configurable by source): intercepts recently added titles. It is idempotent and can be re-executed at any time. | M |
 | FR-CAT-05 | ** full sync ** periodic (weekly default, configurable): realigns the entire catalog and detects **removals** (BR-05). | M |
 | FR-CAT-06 | The system keeps the ** availability history **: first sighting, last confirmation, date of addition, date of removal, possible expiration date, plus an event log (added / removed / re-added /announced expiration). | M |
@@ -180,7 +180,7 @@ The title detail may also show up to 12 ordered cast members. Cast photos and IM
 | FR-UI-01 | ** Desktop only ** interface (minimum supported width 1280px) with ** dark theme **. | M |
 | FR-UI-02 | A selector in the header allows you to choose the catalog source (service + country). The choice is remembered between one session and another. | M |
 | FR-UI-03 | Home is a **grid view** of the catalog of the selected source, with search bar and quick filters: *All*, *New*, *Expiring*, *Recently removed*, *In library*. *In library* shows only titles with cached Arr status *Downloaded* in the selected source, excluding missing, downloading, and partial titles. With recommendations active, a dedicated row of recommendations for that source (max 25) appears under *All* (without search) and follows the selected type and genre filters. *My list* and *For you* (union of sources) are dedicated routes (`/list`, `/for-you`). | M |
-| FR-UI-04 | Each card shows poster, title, year, type badge (movie/serie/stand-up), ** library status ** badge, favorite icon, and **vote** checks (* Like */ *Dislike*) when recommendations are enabled. | M |
+| FR-UI-04 | Each card shows poster, title, year, type badge (movie/series), ** library status ** badge, favorite icon, and **vote** checks (* Like */ *Dislike*) when recommendations are enabled. | M |
 | FR-UI-05 | The grid uses infinite scrolling with page loading. It must remain fluid with catalogs of a few thousand titles. | M |
 | FR-UI-06 | Clicking on a card opens the * * detail card * * in a modal window, which can also be reached via a direct URL. | M |
 | FR-UI-07 | A **hero banner** at the top of the home with a featured title (e.g. latest news with backdrop). | C |
@@ -191,7 +191,7 @@ The title detail may also show up to 12 ordered cast members. Cast photos and IM
 | ID | Requirement | PRI |
 |---|---|---|
 | FR-SRC-01 | Text search **server-side** on the localized and original title, insensitive to capitalization and accents, with debouncing on the UI side. A clear button removes the search text without resetting other filters. | M |
-| FR-SRC-02 | Combinable filters: **type** (movie/serie/stand-up), **genre** (multi-selection), **year** (range), ** library status ** (not in library, missing, downloaded, downloaded, partial), ** favorites only **, **include removed**. | M |
+| FR-SRC-02 | Combinable filters: **type** (movie/series), **genre** (multi-selection, Stand-up included), **year** (range), ** library status ** (not in library, missing, downloaded, downloaded, partial), ** favorites only **, **include removed**. | M |
 | FR-SRC-03 | Sorts: relevance (with search), date added to the service, year, grade, title A→Z. | M |
 | FR-SRC-04 | Minimum grade filter. | C |
 | FR-SRC-05 | Filters are reflected in the URL (shareable, back button compatible). | S |
@@ -223,7 +223,7 @@ The title detail may also show up to 12 ordered cast members. Cast photos and IM
 
 | ID | Requirement | PRI |
 |---|---|---|
-| FR-ADD-01 | When the matching Arr instance is configured and the title is not in the library, the **Add** action appears. The destination is determined by the type: Sonarr → series, Radarr → film. The stand-ups follow the TMDB type of the title (Radarr → film, Sonarr → series). | M |
+| FR-ADD-01 | When the matching Arr instance is configured and the title is not in the library, the **Add** action appears. The destination is determined by the type: Sonarr → series, Radarr → film. Stand-up titles follow their type like any other genre. | M |
 | FR-ADD-02 | The action opens a ** confirmation dialog with the ** options, preset with the default values. Nothing is sent until the user confirms. | M |
 | FR-ADD-03 | ** Sonarr ** options: quality profile, root folder, monitoring mode (all episodes, only future, missing, existing, first season, last season, most recent season, only pilots, recent, none), monitoring of new seasons, series type (standard/daily/anime), folder per season, tags, **search for missing episodes immediately **. | M |
 | FR-ADD-04 | * *Radarr** options: quality profile, root folder, monitored yes/no, minimum availability (announced / at the cinema / out), tags, **look for the movie right away **. | M |
@@ -362,7 +362,7 @@ Decisioni D-REC-01…D-REC-13: vedi §11.3. Override rispetto a D-REC-12: il liv
 | ID | Regola |
 |---|---|
 | BR-01 | **Identità del titolo.** Un titolo ha una sola riga indipendente dal paese. Può essere disponibile in più sorgenti. L'identità è data dall'id Watchmode, dalla coppia (tipo TMDB, id TMDB) quando nota, e dall'id IMDb quando noto (Watchmode può emettere id distinti per varianti localizzate dello stesso titolo). |
-| BR-02 | **Classificazione.** *Serie*: tipo TMDB `tv`. *Film*: tipo TMDB `movie`. *Stand-up*: sottocategoria UI quando un keyword TMDB ha nome “stand-up comedy” (match sul nome normalizzato, senza id TMDB cablati). La destinazione su Sonarr/Radarr dipende dal tipo TMDB (`MediaType`), non da `Category`. |
+| BR-02 | **Classification.** *Series*: TMDB type `tv`. *Movie*: TMDB type `movie`. `Category` always follows the TMDB type. *Stand-up*: a Pickarr genre (id `-1`, name “Stand-up”) added when a TMDB keyword is named “stand-up comedy” (match on the normalized name, no hardcoded TMDB ids). The Sonarr/Radarr destination and the season list follow the type. The legacy `type=standup` filter maps to the Stand-up genre. |
 | BR-03 | **Disponibilità attiva.** Una disponibilità è attiva se non ha data di rimozione. |
 | BR-04 | **Novità.** Titolo con disponibilità attiva, non baseline, aggiunta negli ultimi *N* giorni (default 14). I titoli della baseline non sono mai "novità". |
 | BR-05 | **Rimozione.** Un titolo è considerato rimosso solo da una **sync completa**, quando non compare nell'elenco per **2 sync complete consecutive** (parametro configurabile). Questo evita falsi positivi dovuti a elenchi paginati che cambiano durante la lettura. Alla rimozione si imposta la data e si registra un evento. Se il titolo ricompare, la disponibilità torna attiva e si registra un evento "riaggiunto" (e conta come novità). |
@@ -649,7 +649,7 @@ Dove una decisione è aperta, il documento adotta una proposta predefinita da va
 | D-03 | **IMDb audience rating.** The displayed score blends the public IMDb dataset `title.ratings.tsv.gz` with the TMDB rating. | OMDb is not a source. The IMDb page stays linked when the id is known. |
 | D-04 | **Default delle opzioni di eliminazione.** | Entrambe disattivate, per sicurezza. L'utente può attivarle a ogni eliminazione. |
 | D-05 | **Costo reale per chiamata** Watchmode (e parametri esatti dell'elenco titoli). | Da misurare nello spike SP-1; il design usa un budget parametrico. |
-| D-06 | **Classificazione stand-up.** | Keyword TMDB per **nome** (“stand-up comedy” → `standupcomedy`). Niente id keyword cablati. Preferenza genere Watchmode ancora non implementata. All’avvio, `TitleIdentityMaintenance` ricalcola `Category` dai keyword già persistiti. |
+| D-06 | **Stand-up classification.** | Stand-up is a genre, not a type. TMDB keyword by **name** (“stand-up comedy” → `standupcomedy`) adds the synthetic genre `-1`; TMDB has no stand-up genre and Watchmode is not used. No hardcoded keyword ids. At startup `TitleIdentityMaintenance` realigns `Category` with the type and the Stand-up genre with the stored keywords. |
 | D-07 | **Sezione "In scadenza" sul piano free** (solo anteprima dei prossimi 10 per paese). | Mostrata quando i dati ci sono, con nota sulla limitazione. Calendario completo con piano a pagamento. |
 | D-08 | **Nome del progetto.** | "Pickarr" provvisorio. |
 | D-09 | **Versioni minime** di Sonarr (v4) e Radarr (v5). | Da confermare con le istanze in uso. |

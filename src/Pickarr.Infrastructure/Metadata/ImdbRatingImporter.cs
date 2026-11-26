@@ -18,8 +18,6 @@ public interface IImdbRatingImporter
 
 public sealed record ImdbRatingImportResult(
     double MeanVote,
-    AudiencePrior Prior,
-    AudiencePrior? PreviousPrior,
     int RowCount,
     int TitlesUpdated);
 
@@ -36,20 +34,9 @@ public sealed class ImdbRatingImporter(PickarrDbContext db, IClock clock) : IImd
         CancellationToken cancellationToken = default)
     {
         var parsed = ImdbRatingsFile.Parse(gzipStream);
-        var previous = await db.ImdbRatingSnapshots.AsNoTracking()
-            .SingleOrDefaultAsync(row => row.Id == ImdbRatingSnapshot.SingletonId, cancellationToken);
-        var prior = AudienceScore.Calibrate(
-            await LoadCatalogSamplesAsync(parsed, cancellationToken),
-            parsed.MeanVote);
-
-        await ReplaceDumpAsync(parsed, prior, cancellationToken);
-        var titlesUpdated = await ApplyToTitlesAsync(parsed, prior, cancellationToken);
-        return new ImdbRatingImportResult(
-            parsed.MeanVote,
-            prior,
-            previous is null ? null : new AudiencePrior(previous.PriorMean, previous.TmdbOffset),
-            parsed.Rows.Count,
-            titlesUpdated);
+        await ReplaceDumpAsync(parsed, cancellationToken);
+        var titlesUpdated = await ApplyToTitlesAsync(parsed, cancellationToken);
+        return new ImdbRatingImportResult(parsed.MeanVote, parsed.Rows.Count, titlesUpdated);
     }
 
     public async Task ApplyStoredRatingAsync(Title title, CancellationToken cancellationToken = default)
@@ -65,49 +52,10 @@ public sealed class ImdbRatingImporter(PickarrDbContext db, IClock clock) : IImd
             }
         }
 
-        ApplyStoredRating(title, row, await LoadPriorAsync(title, cancellationToken));
+        ApplyStoredRating(title, row);
     }
 
-    private async Task<AudiencePrior> LoadPriorAsync(Title title, CancellationToken cancellationToken)
-    {
-        var snapshot = await db.ImdbRatingSnapshots.AsNoTracking()
-            .SingleOrDefaultAsync(row => row.Id == ImdbRatingSnapshot.SingletonId, cancellationToken);
-        if (snapshot is not null)
-        {
-            return new AudiencePrior(snapshot.PriorMean, snapshot.TmdbOffset);
-        }
-
-        // No import yet: shrink toward the catalog TMDB mean, with no offset.
-        var tmdbMean = await db.Titles.AsNoTracking()
-            .Where(row => row.VoteTmdb != null && row.VoteTmdbCount > 0)
-            .AverageAsync(row => row.VoteTmdb, cancellationToken);
-        return new AudiencePrior(tmdbMean ?? title.VoteTmdb ?? 0, 0);
-    }
-
-    private async Task<List<AudienceSample>> LoadCatalogSamplesAsync(
-        ParsedImdbRatings parsed,
-        CancellationToken cancellationToken)
-    {
-        var titles = await db.Titles.AsNoTracking()
-            .Where(title => title.ImdbId != null)
-            .Select(title => new { title.ImdbId, title.VoteTmdb, title.VoteTmdbCount })
-            .ToListAsync(cancellationToken);
-        var samples = new List<AudienceSample>(titles.Count);
-        foreach (var title in titles)
-        {
-            if (parsed.Rows.TryGetValue(title.ImdbId!, out var row))
-            {
-                samples.Add(new AudienceSample(row.AverageRating, row.NumVotes, title.VoteTmdb, title.VoteTmdbCount));
-            }
-        }
-
-        return samples;
-    }
-
-    private async Task ReplaceDumpAsync(
-        ParsedImdbRatings parsed,
-        AudiencePrior prior,
-        CancellationToken cancellationToken)
+    private async Task ReplaceDumpAsync(ParsedImdbRatings parsed, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await db.ImdbTitleRatings.ExecuteDeleteAsync(cancellationToken);
@@ -152,8 +100,6 @@ public sealed class ImdbRatingImporter(PickarrDbContext db, IClock clock) : IImd
         }
 
         snapshot.MeanVote = parsed.MeanVote;
-        snapshot.PriorMean = prior.Mean;
-        snapshot.TmdbOffset = prior.TmdbOffset;
         snapshot.RowCount = parsed.Rows.Count;
         snapshot.ImportedAt = clock.UtcNow;
         snapshot.SourceUrl = HttpImdbRatingsSource.DatasetUrl;
@@ -162,10 +108,7 @@ public sealed class ImdbRatingImporter(PickarrDbContext db, IClock clock) : IImd
         db.ChangeTracker.Clear();
     }
 
-    private async Task<int> ApplyToTitlesAsync(
-        ParsedImdbRatings parsed,
-        AudiencePrior prior,
-        CancellationToken cancellationToken)
+    private async Task<int> ApplyToTitlesAsync(ParsedImdbRatings parsed, CancellationToken cancellationToken)
     {
         var updated = 0;
         var lastId = 0;
@@ -184,7 +127,7 @@ public sealed class ImdbRatingImporter(PickarrDbContext db, IClock clock) : IImd
 
             foreach (var title in batch)
             {
-                ApplyTitle(title, parsed, prior);
+                ApplyTitle(title, parsed);
             }
 
             await db.SaveChangesAsync(cancellationToken);
@@ -194,7 +137,7 @@ public sealed class ImdbRatingImporter(PickarrDbContext db, IClock clock) : IImd
         }
     }
 
-    private static void ApplyTitle(Title title, ParsedImdbRatings parsed, AudiencePrior prior)
+    private static void ApplyTitle(Title title, ParsedImdbRatings parsed)
     {
         ImdbRatingRow? row = null;
         if (!string.IsNullOrWhiteSpace(title.ImdbId)
@@ -203,10 +146,10 @@ public sealed class ImdbRatingImporter(PickarrDbContext db, IClock clock) : IImd
             row = found;
         }
 
-        ApplyStoredRating(title, row, prior);
+        ApplyStoredRating(title, row);
     }
 
-    private static void ApplyStoredRating(Title title, ImdbRatingRow? row, AudiencePrior prior)
+    private static void ApplyStoredRating(Title title, ImdbRatingRow? row)
     {
         title.VoteImdb = row?.AverageRating;
         title.VoteImdbCount = row?.NumVotes;
@@ -214,8 +157,7 @@ public sealed class ImdbRatingImporter(PickarrDbContext db, IClock clock) : IImd
             row?.AverageRating,
             row?.NumVotes,
             title.VoteTmdb,
-            title.VoteTmdbCount,
-            prior);
+            title.VoteTmdbCount);
     }
 }
 

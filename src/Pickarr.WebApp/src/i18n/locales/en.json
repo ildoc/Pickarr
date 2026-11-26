@@ -174,8 +174,7 @@
     "typeAll": "All",
     "types": {
       "movie": "Movies",
-      "series": "Series",
-      "standup": "Stand-up"
+      "series": "Series"
     },
     "genre": "Genre",
     "genreAll": "All genres",
@@ -217,7 +216,6 @@
   "category": {
     "movie": "Movie",
     "series": "Series",
-    "standup": "Stand-up",
     "unknown": "Other"
   },
   "arr": {

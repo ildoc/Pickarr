@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Pickarr.Core.Abstractions;
 using Pickarr.Core.Domain;
-using Pickarr.Core.Metadata;
 using Pickarr.Infrastructure.Catalog;
 using Pickarr.Infrastructure.Jobs;
 using Pickarr.Infrastructure.Metadata;
@@ -18,32 +17,12 @@ namespace Pickarr.Infrastructure.Tests;
 
 public sealed class ImdbRatingsJobTests
 {
-    [Theory]
-    [InlineData(false, 0, 0, 7, 0, true)]
-    [InlineData(true, 7, 0, 7, 0, false)]
-    [InlineData(true, 7, 0, 7.2, 0, true)]
-    [InlineData(true, 7, 0, 7.01, 0, false)]
-    [InlineData(true, 7, 0.3, 7, 0.4, true)]
-    [InlineData(true, 7, 0.3, 7, 0.32, false)]
-    public void Rebuild_follows_the_prior_delta(
-        bool hasPrevious,
-        double previousMean,
-        double previousOffset,
-        double currentMean,
-        double currentOffset,
-        bool expected)
-    {
-        AudiencePrior? previous = hasPrevious ? new AudiencePrior(previousMean, previousOffset) : null;
-        ImdbRatingsJob.ShouldRebuildRecommendations(previous, new AudiencePrior(currentMean, currentOffset))
-            .ShouldBe(expected);
-    }
-
     [Fact]
-    public async Task Successful_import_with_a_new_mean_enqueues_one_reco_build()
+    public async Task Successful_import_enqueues_one_reco_build()
     {
         await using var harness = await Harness.CreateAsync();
         harness.Importer.ImportAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>())
-            .Returns(new ImdbRatingImportResult(7.2, new AudiencePrior(7.2, 0), null, 2, 3));
+            .Returns(new ImdbRatingImportResult(7.2, 2, 3));
 
         await harness.Job.ExecuteAsync();
 
@@ -59,18 +38,17 @@ public sealed class ImdbRatingsJobTests
     }
 
     [Fact]
-    public async Task Successful_import_below_the_mean_delta_does_not_enqueue_a_reco_build()
+    public async Task Manual_import_is_recorded_as_manual()
     {
         await using var harness = await Harness.CreateAsync();
         harness.Importer.ImportAsync(Arg.Any<Stream>(), Arg.Any<CancellationToken>())
-            .Returns(new ImdbRatingImportResult(7.01, new AudiencePrior(7.01, 0), new AudiencePrior(7, 0), 2, 1));
+            .Returns(new ImdbRatingImportResult(7.01, 2, 1));
 
         await harness.Job.ExecuteAsync(isManual: true);
 
         var run = await harness.Db.SyncRuns.SingleAsync();
         run.Status.ShouldBe(SyncRunStatuses.Succeeded);
         run.TriggeredBy.ShouldBe(SyncRunTriggers.Manual);
-        harness.Jobs.DidNotReceive().Create(Arg.Any<Job>(), Arg.Any<IState>());
     }
 
     [Fact]

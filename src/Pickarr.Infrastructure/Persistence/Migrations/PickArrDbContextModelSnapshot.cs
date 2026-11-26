@@ -470,9 +470,6 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
                     b.Property<double>("MeanVote")
                         .HasColumnType("REAL");
 
-                    b.Property<double>("PriorMean")
-                        .HasColumnType("REAL");
-
                     b.Property<int>("RowCount")
                         .HasColumnType("INTEGER");
 
@@ -480,9 +477,6 @@ namespace Pickarr.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
-
-                    b.Property<double>("TmdbOffset")
-                        .HasColumnType("REAL");
 
                     b.HasKey("Id");
 

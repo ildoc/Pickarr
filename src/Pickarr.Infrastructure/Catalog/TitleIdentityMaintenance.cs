@@ -1,16 +1,18 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Pickarr.Core.Catalog;
 using Pickarr.Core.Domain;
 using Pickarr.Core.Domain.Entities;
 using Pickarr.Core.Metadata;
+using Pickarr.Infrastructure.Metadata;
 using Pickarr.Infrastructure.Persistence;
 
 namespace Pickarr.Infrastructure.Catalog;
 
 /// <summary>
 /// One-shot startup repairs for title identity: requeue IMDb-capable Unmapped rows,
-/// consolidate duplicate IMDb rows left by pre-merge upserts, and reclassify Category
-/// from persisted TMDB keyword names (no hardcoded keyword ids).
+/// consolidate duplicate IMDb rows left by pre-merge upserts, and realign Category and the
+/// Stand-up genre from persisted TMDB keyword names (no hardcoded keyword ids).
 /// </summary>
 public sealed class TitleIdentityMaintenance(
     PickarrDbContext db,
@@ -266,17 +268,30 @@ public sealed class TitleIdentityMaintenance(
     }
 
     /// <summary>
-    /// Recomputes <see cref="Title.Category"/> from stored keyword names so a bad historical
-    /// keyword-id rule (e.g. matching TMDB "superhero") does not leave false StandUp labels.
+    /// Aligns <see cref="Title.Category"/> with the media type and the synthetic Stand-up genre with
+    /// stored keyword names, so a bad historical keyword-id rule (e.g. matching TMDB "superhero")
+    /// does not leave false stand-up labels.
     /// </summary>
     private async Task ReclassifyCategoriesFromKeywordsAsync(CancellationToken cancellationToken)
     {
+        var keywordIds = (await db.Keywords.AsNoTracking()
+                .Where(k => EF.Functions.Like(k.Name, "%stand%"))
+                .Select(k => new { k.Id, k.Name })
+                .ToListAsync(cancellationToken))
+            .Where(k => TmdbStandUp.IsStandUpKeyword(k.Name))
+            .Select(k => k.Id)
+            .ToList();
+        var standUpIds = await db.TitleKeywords.AsNoTracking()
+            .Where(tk => keywordIds.Contains(tk.KeywordId))
+            .Select(tk => tk.TitleId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
         var titles = await db.Titles
-            .Include(t => t.TitleKeywords)
-            .ThenInclude(tk => tk.Keyword)
+            .Include(t => t.TitleGenres)
             .Where(t =>
-                t.Category == TitleCategories.StandUp
-                || t.TitleKeywords.Any())
+                t.Category != (t.MediaType == MediaTypes.Movie ? TitleCategories.Movie : TitleCategories.Series)
+                || standUpIds.Contains(t.Id) != t.TitleGenres.Any(tg => tg.GenreId == SyntheticGenres.StandUp))
             .ToListAsync(cancellationToken);
 
         if (titles.Count == 0)
@@ -284,31 +299,28 @@ public sealed class TitleIdentityMaintenance(
             return;
         }
 
-        var now = DateTime.UtcNow;
-        var changed = 0;
-        foreach (var title in titles)
+        if (standUpIds.Count > 0)
         {
-            var names = title.TitleKeywords.Select(tk => tk.Keyword?.Name);
-            var desired = TmdbStandUp.ResolveCategory(title.MediaType, names);
-            if (string.Equals(title.Category, desired, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            title.Category = desired;
-            title.UpdatedAt = now;
-            changed++;
+            var languages = await db.CatalogSources.AsNoTracking()
+                .Select(s => s.MetadataLanguage)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            await StandUpGenre.EnsureGenreAsync(db, languages, cancellationToken);
         }
 
-        if (changed == 0)
+        var now = DateTime.UtcNow;
+        var standUp = standUpIds.ToHashSet();
+        foreach (var title in titles)
         {
-            return;
+            title.Category = CatalogMediaMapping.ToCategory(title.MediaType);
+            StandUpGenre.SyncLink(db, title, standUp.Contains(title.Id));
+            title.UpdatedAt = now;
         }
 
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation(
-            "Reclassified Category on {Count} titles from persisted TMDB keyword names",
-            changed);
+            "Realigned type and Stand-up genre on {Count} titles from persisted TMDB keyword names",
+            titles.Count);
     }
 
     private static DateTime Max(DateTime a, DateTime b) => a >= b ? a : b;

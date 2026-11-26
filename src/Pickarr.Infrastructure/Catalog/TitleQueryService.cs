@@ -124,23 +124,14 @@ public sealed class TitleQueryService(
             };
         }
 
-        if (request.Types is { Count: > 0 })
+        var categories = TitleTypeFilter.Categories(request.Types);
+        if (categories.Count > 0)
         {
-            var categories = request.Types
-                .Select(MapTypeToCategory)
-                .Where(c => c is not null)
-                .Cast<string>()
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            if (categories.Count > 0)
-            {
-                query = query.Where(t => categories.Contains(t.Category));
-            }
+            query = query.Where(t => categories.Contains(t.Category));
         }
 
-        if (request.Genres is { Count: > 0 })
+        if (TitleTypeFilter.GenresWithLegacyTypes(request.Types, request.Genres) is { Count: > 0 } genreIds)
         {
-            var genreIds = request.Genres.ToList();
             query = query.Where(t => t.TitleGenres.Any(tg => genreIds.Contains(tg.GenreId)));
         }
 
@@ -496,7 +487,7 @@ public sealed class TitleQueryService(
             TmdbImageUrls.Build(title.PosterPath, "w500"),
             TmdbImageUrls.Build(title.BackdropPath, "w780"),
             new TitleRatingsDto(
-                DisplayScore(title),
+                title.VoteBlended,
                 title.VoteImdb,
                 title.VoteImdbCount,
                 title.VoteTmdb,
@@ -653,7 +644,7 @@ public sealed class TitleQueryService(
             TmdbImageUrls.Build(title.PosterPath, "w342"),
             MapGenres(title, language),
             title.VoteTmdb,
-            DisplayScore(title),
+            title.VoteBlended,
             personal.IsFavorite,
             personal.IsWatched,
             personal.Rating,
@@ -661,14 +652,6 @@ public sealed class TitleQueryService(
             BuildArrSummary(title.MediaType, arrItem),
             ratingsOnly ? MapRatingPlaces(title) : MapPlaces(title));
     }
-
-    internal static double? DisplayScore(Title title) =>
-        AudienceScore.Display(
-            title.VoteImdb,
-            title.VoteImdbCount,
-            title.VoteTmdb,
-            title.VoteTmdbCount,
-            title.VoteBlended);
 
     private static IReadOnlyList<CatalogPlaceDto> MapPlaces(Title title) =>
         title.Availabilities
@@ -970,21 +953,7 @@ public sealed class TitleQueryService(
         }
     }
 
-    private static string? MapTypeToCategory(string type) => type.Trim().ToLowerInvariant() switch
-    {
-        "movie" => TitleCategories.Movie,
-        "series" => TitleCategories.Series,
-        "standup" or "stand-up" or "stand_up" => TitleCategories.StandUp,
-        _ => null,
-    };
-
-    private static string ToApiCategory(string category) => category switch
-    {
-        TitleCategories.Movie => "movie",
-        TitleCategories.Series => "series",
-        TitleCategories.StandUp => "standup",
-        _ => category.ToLowerInvariant(),
-    };
+    private static string ToApiCategory(string category) => TitleTypeFilter.ToApiType(category);
 
     private static string ToApiMetadataStatus(string status) => status.ToLowerInvariant() switch
     {

@@ -51,10 +51,12 @@ describe('FilterBar', () => {
           types={[
             { type: 'movie', count: 1 },
             { type: 'series', count: 1 },
-            { type: 'standup', count: 1 },
           ]}
           genre=""
-          genres={[{ id: 4, name: 'Comedy', count: 2 }]}
+          genres={[
+            { id: 4, name: 'Comedy', count: 2 },
+            { id: -1, name: 'Stand-up', count: 1 },
+          ]}
           onGenreChange={() => undefined}
           dir="desc"
           onDirChange={() => undefined}

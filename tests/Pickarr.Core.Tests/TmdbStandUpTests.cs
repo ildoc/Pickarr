@@ -23,14 +23,11 @@ public sealed class TmdbStandUpTests
     }
 
     [Fact]
-    public void ResolveCategory_uses_keyword_names_not_media_type_alone()
+    public void HasStandUpKeyword_matches_any_keyword_name()
     {
-        TmdbStandUp.ResolveCategory(MediaTypes.Movie, ["superhero", "based on comic"])
-            .ShouldBe(TitleCategories.Movie);
-        TmdbStandUp.ResolveCategory(MediaTypes.Movie, ["stand-up comedy"])
-            .ShouldBe(TitleCategories.StandUp);
-        TmdbStandUp.ResolveCategory(MediaTypes.Series, Array.Empty<string?>())
-            .ShouldBe(TitleCategories.Series);
+        TmdbStandUp.HasStandUpKeyword(["superhero", "based on comic"]).ShouldBeFalse();
+        TmdbStandUp.HasStandUpKeyword(["live", "stand-up comedy"]).ShouldBeTrue();
+        TmdbStandUp.HasStandUpKeyword(Array.Empty<string?>()).ShouldBeFalse();
     }
 
     [Fact]

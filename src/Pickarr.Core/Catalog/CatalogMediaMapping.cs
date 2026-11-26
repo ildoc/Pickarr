@@ -11,7 +11,9 @@ public static class CatalogMediaMapping
         _ => MediaTypes.Series,
     };
 
-    public static string ToCategory(CatalogEntryType type) => ToMediaType(type) switch
+    public static string ToCategory(CatalogEntryType type) => ToCategory(ToMediaType(type));
+
+    public static string ToCategory(string mediaType) => mediaType switch
     {
         MediaTypes.Movie => TitleCategories.Movie,
         _ => TitleCategories.Series,

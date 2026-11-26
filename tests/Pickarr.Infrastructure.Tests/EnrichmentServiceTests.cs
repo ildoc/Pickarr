@@ -165,7 +165,6 @@ public sealed class EnrichmentServiceTests : IAsyncLifetime
             {
                 Id = ImdbRatingSnapshot.SingletonId,
                 MeanVote = 7,
-                PriorMean = 7,
                 RowCount = 1,
                 ImportedAt = new DateTime(2026, 11, 29, 4, 0, 0, DateTimeKind.Utc),
                 SourceUrl = HttpImdbRatingsSource.DatasetUrl,
@@ -182,13 +181,13 @@ public sealed class EnrichmentServiceTests : IAsyncLifetime
         saved.VoteImdbCount.ShouldBe(500);
         saved.VoteTmdb.ShouldBe(8.433);
         saved.VoteTmdbCount.ShouldBe(26280);
-        saved.VoteBlended.ShouldBe(AudienceScore.Blend(8, 500, saved.VoteTmdb, saved.VoteTmdbCount, new AudiencePrior(7, 0)));
+        saved.VoteBlended.ShouldBe(AudienceScore.Blend(8, 500, saved.VoteTmdb, saved.VoteTmdbCount));
         _server.LogEntries.ShouldNotContain(entry =>
             entry.RequestMessage.Url.Contains("datasets.imdbws.com", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
-    public async Task Enrich_without_a_local_imdb_row_shrinks_the_calibrated_tmdb_score()
+    public async Task Enrich_without_a_local_imdb_row_uses_the_tmdb_score()
     {
         await StubMovieAsync();
         var titleId = await SeedTitleAsync(tmdbId: 550, tmdbType: "movie", language: "en-US");
@@ -199,16 +198,6 @@ public sealed class EnrichmentServiceTests : IAsyncLifetime
             seeded.VoteImdb = 9.9;
             seeded.VoteImdbCount = 12;
             seeded.VoteBlended = 9.9;
-            db.ImdbRatingSnapshots.Add(new ImdbRatingSnapshot
-            {
-                Id = ImdbRatingSnapshot.SingletonId,
-                MeanVote = 6,
-                PriorMean = 7,
-                TmdbOffset = 0.2,
-                RowCount = 1,
-                ImportedAt = new DateTime(2026, 11, 29, 4, 0, 0, DateTimeKind.Utc),
-                SourceUrl = HttpImdbRatingsSource.DatasetUrl,
-            });
             await db.SaveChangesAsync();
         }
 
@@ -220,11 +209,11 @@ public sealed class EnrichmentServiceTests : IAsyncLifetime
         saved.VoteImdbCount.ShouldBeNull();
         saved.VoteTmdb.ShouldBe(8.433);
         saved.VoteTmdbCount.ShouldBe(26280);
-        saved.VoteBlended!.Value.ShouldBe((8.633 * 26280 + 7 * 500) / 26780, 1e-9);
+        saved.VoteBlended!.Value.ShouldBe(8.433, 1e-12);
     }
 
     [Fact]
-    public async Task Enrich_before_any_import_shrinks_toward_the_catalog_tmdb_mean()
+    public async Task Enrich_without_an_imdb_id_uses_the_tmdb_score()
     {
         var movie = (await File.ReadAllTextAsync(Path.Combine(_fixtureRoot, "movie-550-en.json")))
             .Replace("\"tt0137523\"", "null", StringComparison.Ordinal);
@@ -240,8 +229,7 @@ public sealed class EnrichmentServiceTests : IAsyncLifetime
         saved.ImdbId.ShouldBeNull();
         saved.VoteImdb.ShouldBeNull();
         saved.VoteTmdb.ShouldNotBeNull();
-        // The only title in the catalog: its TMDB rating is the catalog mean.
-        saved.VoteBlended!.Value.ShouldBe(saved.VoteTmdb!.Value, 1e-9);
+        saved.VoteBlended!.Value.ShouldBe(saved.VoteTmdb!.Value, 1e-12);
     }
 
     private async Task StubMovieAsync()
@@ -253,7 +241,7 @@ public sealed class EnrichmentServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Enrich_tv_maps_tvdb_and_stand_up_category()
+    public async Task Enrich_tv_maps_tvdb_and_stand_up_genre()
     {
         var tv = await File.ReadAllTextAsync(Path.Combine(_fixtureRoot, "tv-1396-en.json"));
         var standup = await File.ReadAllTextAsync(Path.Combine(_fixtureRoot, "tv-standup-keywords.json"));
@@ -273,9 +261,15 @@ public sealed class EnrichmentServiceTests : IAsyncLifetime
         series.TvdbId.ShouldBe(81189);
         series.MetadataStatus.ShouldBe(MetadataStatuses.Ready);
 
-        var special = await db.Titles.SingleAsync(t => t.Id == standupId);
-        special.Category.ShouldBe(TitleCategories.StandUp);
+        var special = await db.Titles.Include(t => t.TitleGenres).SingleAsync(t => t.Id == standupId);
+        special.Category.ShouldBe(TitleCategories.Series);
         special.MediaType.ShouldBe(MediaTypes.Series);
+        special.TitleGenres.ShouldContain(tg => tg.GenreId == SyntheticGenres.StandUp);
+        (await db.GenreLocalizations.SingleAsync(l => l.GenreId == SyntheticGenres.StandUp && l.Language == "en-US"))
+            .Name.ShouldBe(SyntheticGenres.StandUpName);
+
+        var drama = await db.Titles.Include(t => t.TitleGenres).SingleAsync(t => t.Id == seriesId);
+        drama.TitleGenres.ShouldNotContain(tg => tg.GenreId == SyntheticGenres.StandUp);
     }
 
     [Fact]

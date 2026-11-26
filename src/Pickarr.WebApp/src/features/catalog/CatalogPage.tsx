@@ -1,8 +1,9 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { fetchCatalogTypes, fetchGenres, fetchSources, fetchTitles } from '../../api/catalog'
+import { useFilterSearchParams } from '../../lib/filterParams'
 import { loadPreferredSourceId, savePreferredSourceId } from '../../lib/sourcePreference'
 import { useDebouncedValue } from '../../lib/useDebouncedValue'
 import { useProfiles } from '../who/profileContext'
@@ -15,7 +16,7 @@ import { TitleGrid } from './TitleGrid'
 export function CatalogPage() {
   const { t } = useTranslation()
   const { active } = useProfiles()
-  const [params, setParams] = useSearchParams()
+  const [params, setParams] = useFilterSearchParams()
 
   const q = params.get('q') ?? ''
   const view = params.get('view') ?? 'all'

@@ -27,8 +27,6 @@ export function categoryLabelKey(category: string): string {
       return 'category.movie'
     case 'series':
       return 'category.series'
-    case 'standup':
-      return 'category.standup'
     default:
       return 'category.unknown'
   }

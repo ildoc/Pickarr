@@ -124,7 +124,7 @@ public sealed class TitleIdentityMaintenanceTests
     }
 
     [Fact]
-    public async Task Run_reclassifies_StandUp_from_keyword_names_not_ids()
+    public async Task Run_moves_stand_up_from_type_to_genre_by_keyword_names_not_ids()
     {
         await using var db = await CreateDbAsync();
         var now = new DateTime(2026, 11, 11, 12, 0, 0, DateTimeKind.Utc);
@@ -132,11 +132,12 @@ public sealed class TitleIdentityMaintenanceTests
         var superhero = new Keyword { Id = 9001, Name = "superhero" };
         var standup = new Keyword { Id = 9002, Name = "stand-up comedy" };
         db.Keywords.AddRange(superhero, standup);
+        db.Genres.Add(new Genre { Id = SyntheticGenres.StandUp });
 
         var falseStandUp = new Title
         {
             MediaType = MediaTypes.Movie,
-            Category = TitleCategories.StandUp,
+            Category = "StandUp",
             OriginalTitle = "The Lego Movie",
             MetadataStatus = MetadataStatuses.Ready,
             CreatedAt = now,
@@ -157,15 +158,21 @@ public sealed class TitleIdentityMaintenanceTests
         db.TitleKeywords.AddRange(
             new TitleKeyword { TitleId = falseStandUp.Id, KeywordId = superhero.Id },
             new TitleKeyword { TitleId = trueStandUp.Id, KeywordId = standup.Id });
+        db.TitleGenres.Add(new TitleGenre { TitleId = falseStandUp.Id, GenreId = SyntheticGenres.StandUp });
         await db.SaveChangesAsync();
 
         var maintenance = new TitleIdentityMaintenance(db, NullLogger<TitleIdentityMaintenance>.Instance);
         await maintenance.RunAsync();
+        db.ChangeTracker.Clear();
 
-        (await db.Titles.SingleAsync(t => t.Id == falseStandUp.Id)).Category
-            .ShouldBe(TitleCategories.Movie);
-        (await db.Titles.SingleAsync(t => t.Id == trueStandUp.Id)).Category
-            .ShouldBe(TitleCategories.StandUp);
+        var movie = await db.Titles.Include(t => t.TitleGenres).SingleAsync(t => t.Id == falseStandUp.Id);
+        movie.Category.ShouldBe(TitleCategories.Movie);
+        movie.TitleGenres.ShouldBeEmpty();
+        var series = await db.Titles.Include(t => t.TitleGenres).SingleAsync(t => t.Id == trueStandUp.Id);
+        series.Category.ShouldBe(TitleCategories.Series);
+        series.TitleGenres.Select(tg => tg.GenreId).ShouldBe([SyntheticGenres.StandUp]);
+        (await db.GenreLocalizations.SingleAsync(l => l.GenreId == SyntheticGenres.StandUp)).Name
+            .ShouldBe(SyntheticGenres.StandUpName);
     }
 
     private static async Task<PickarrDbContext> CreateDbAsync()

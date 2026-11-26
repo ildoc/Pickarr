@@ -9,6 +9,7 @@ public sealed class ImdbRatingMigrationTests
 {
     private const string SchemaBeforeImdbRatings = "20261125101540_AddArrTitleSlug";
     private const string ImdbRatingsMigration = "20261126171739_AddImdbRatings";
+    private const string AudienceScorePriorMigration = "20261126192356_AddAudienceScorePrior";
 
     [Fact]
     public async Task Migration_backfills_blended_vote_from_tmdb_and_adds_imdb_tables()
@@ -42,7 +43,7 @@ public sealed class ImdbRatingMigrationTests
     }
 
     [Fact]
-    public async Task Audience_prior_migration_recomputes_the_pooled_score()
+    public async Task Removing_the_prior_restores_the_vote_weighted_title_rating()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
@@ -67,6 +68,12 @@ public sealed class ImdbRatingMigrationTests
                 VALUES (1, 7.0, 1, {0}, 'https://example.test/old.gz');
                 """,
                 createdAt);
+            await db.Database.MigrateAsync(AudienceScorePriorMigration);
+
+            var shrunk = await db.Database
+                .SqlQueryRaw<double>("""SELECT "VoteBlended" AS "Value" FROM "Titles" WHERE "Id" = 1""")
+                .SingleAsync();
+            shrunk.ShouldBe((9.5 * 3 + 7.0 * 500) / 503, 1e-9);
         }
 
         await using (var db = new PickarrDbContext(options))
@@ -74,44 +81,12 @@ public sealed class ImdbRatingMigrationTests
             await db.Database.MigrateAsync();
 
             var snapshot = await db.ImdbRatingSnapshots.SingleAsync();
-            snapshot.PriorMean.ShouldBe(7.0);
-            snapshot.TmdbOffset.ShouldBe(0);
+            snapshot.MeanVote.ShouldBe(7.0);
 
             var titles = await db.Titles.OrderBy(title => title.Id).ToListAsync();
-            titles[0].VoteBlended!.Value.ShouldBe((9.5 * 3 + 7.0 * 500) / 503, 1e-9);
-            titles[1].VoteBlended!.Value.ShouldBe((8.0 * 500 + 6.0 * 500 + 7.0 * 500) / 1500, 1e-9);
+            titles[0].VoteBlended!.Value.ShouldBe(9.5, 1e-9);
+            titles[1].VoteBlended!.Value.ShouldBe(7.0, 1e-9);
             titles[2].VoteBlended.ShouldBeNull();
-        }
-    }
-
-    [Fact]
-    public async Task Audience_prior_migration_without_an_import_uses_the_catalog_tmdb_mean()
-    {
-        await using var connection = new SqliteConnection("Data Source=:memory:");
-        await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<PickarrDbContext>().UseSqlite(connection).Options;
-        var createdAt = new DateTime(2026, 11, 26, 0, 0, 0, DateTimeKind.Utc);
-
-        await using (var db = new PickarrDbContext(options))
-        {
-            await db.Database.MigrateAsync(ImdbRatingsMigration);
-            await db.Database.ExecuteSqlRawAsync(
-                """
-                INSERT INTO "Titles" ("Id", "MediaType", "Category", "MetadataStatus", "MetadataAttempts", "CreatedAt", "UpdatedAt",
-                                      "VoteTmdb", "VoteTmdbCount", "VoteBlended")
-                VALUES (1, 'movie', 'movie', 'Ready', 0, {0}, {0}, 8.5, 100, 8.5),
-                       (2, 'movie', 'movie', 'Ready', 0, {0}, {0}, 6.5, 100, 6.5);
-                """,
-                createdAt);
-        }
-
-        await using (var db = new PickarrDbContext(options))
-        {
-            await db.Database.MigrateAsync();
-
-            var titles = await db.Titles.OrderBy(title => title.Id).ToListAsync();
-            titles[0].VoteBlended!.Value.ShouldBe((8.5 * 100 + 7.5 * 500) / 600, 1e-9);
-            titles[1].VoteBlended!.Value.ShouldBe((6.5 * 100 + 7.5 * 500) / 600, 1e-9);
         }
     }
 }

@@ -1,9 +1,8 @@
-using Pickarr.Core.Domain;
-
 namespace Pickarr.Core.Metadata;
 
 /// <summary>
-/// Stand-up classification from TMDB keyword <em>names</em> (D-06 / BR-02).
+/// Stand-up detection from TMDB keyword <em>names</em> (D-06 / BR-02). A match adds the synthetic
+/// Stand-up genre; it does not change the title type.
 /// Does not hardcode TMDB keyword ids — those can collide or drift.
 /// </summary>
 public static class TmdbStandUp
@@ -27,17 +26,4 @@ public static class TmdbStandUp
 
     public static bool HasStandUpKeyword(IEnumerable<string?> names) =>
         names.Any(IsStandUpKeyword);
-
-    /// <summary>
-    /// UI category: StandUp when a stand-up comedy keyword is present; otherwise Movie/Series from media type.
-    /// </summary>
-    public static string ResolveCategory(string mediaType, IEnumerable<string?> keywordNames)
-    {
-        if (HasStandUpKeyword(keywordNames))
-        {
-            return TitleCategories.StandUp;
-        }
-
-        return mediaType == MediaTypes.Movie ? TitleCategories.Movie : TitleCategories.Series;
-    }
 }

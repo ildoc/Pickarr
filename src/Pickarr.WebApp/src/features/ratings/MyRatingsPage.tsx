@@ -1,6 +1,5 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { fetchSources } from '../../api/catalog'
 import {
@@ -11,6 +10,7 @@ import {
 } from '../../api/ratings'
 import { fetchSettings } from '../../api/settings'
 import type { CatalogSource, TitleListItem } from '../../api/types'
+import { useFilterSearchParams } from '../../lib/filterParams'
 import { savePreferredSourceId } from '../../lib/sourcePreference'
 import { useDebouncedValue } from '../../lib/useDebouncedValue'
 import { useProfiles } from '../who/profileContext'
@@ -23,7 +23,7 @@ export function MyRatingsPage() {
   const { active } = useProfiles()
   const queryClient = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
-  const [params, setParams] = useSearchParams()
+  const [params, setParams] = useFilterSearchParams()
 
   const q = params.get('q') ?? ''
   const type = params.get('type') ?? ''
